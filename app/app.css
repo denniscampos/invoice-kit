@@ -13,6 +13,11 @@
 		"Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
 		"Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 
+	/* The Classic invoice template's face. A system stack on purpose: the PDF
+	   renderer (feature 5) draws the document in a headless browser, and a
+	   webfont there is a network request that can fail mid render. */
+	--font-serif: ui-serif, Georgia, "Times New Roman", serif;
+
 	/* Below this the editor's two panes stack. Named because it is a layout
 	   decision from the mockup, not an arbitrary screen size. */
 	--breakpoint-editor: 67.5rem;

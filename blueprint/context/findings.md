@@ -36,7 +36,15 @@ call rather than dead code.
 **Suggested fix:** drop `export` from the ones nothing outside the module needs,
 and re-export them when a caller appears. Leaving them is defensible if you
 prefer the module to read as a public API.
-**Resolution:**
+**Resolution:** Still open, list revised 2026-08-14 by /audit (scope: current).
+Feature 4 moved `DEFAULT_TEMPLATE_ID` to `app/lib/invoice-templates.ts`, where
+`invoice-draft.ts` now imports it, so it leaves this list with a real cross-module
+caller. The remaining six are unchanged. Feature 4 also added one new instance of
+the same pattern: `PartyAddressLine` in `app/lib/format.ts:47` is exported with no
+importer, since the templates infer the type from the function's return. Same
+judgment call, same fix. Updated again the same day: the F-20 repair gave
+`PartyAddressLine` a real importer in `CompactTemplate.tsx`, so it leaves this
+list too. The original six from feature 1 and 2 are what remain.
 
 ### F-05 [P3] open - A tampered draft with a partial party object breaks its inputs
 
@@ -162,4 +170,89 @@ the amount column from the currency rather than a constant, or let the numeric
 cells wrap when they must (dropping `whitespace-nowrap` on the amount column
 only). Both are cheap; neither is worth doing while the picker holds five
 similar currencies.
+**Resolution:**
+
+### F-19 [P2] open - The editor scrolls sideways on a phone-width screen
+
+**File:** app/routes/editor.tsx:70
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** At a 360px viewport the document is 526px wide, so the whole
+page scrolls horizontally and the right edge of every card sits off screen.
+Measured in the running app: the form column reports 502px against a 345px
+document width. The two-column grid is correctly gated behind the `editor`
+breakpoint, so this is a minimum width inside the stacked column, not the grid.
+Predates feature 4: the same 526px and 502px were measured with feature 4's work
+stashed, with and without the template switcher present, so the switcher is a
+passenger rather than the cause.
+**Suggested fix:** find the child that will not go below ~500px (the line item
+row's fixed track widths in `LineItemsCard` are the first candidate) and let it
+collapse or scroll below the `editor` breakpoint. `min-w-0` on the grid items is
+usually the missing half of the fix, since grid children default to
+`min-width: auto` and refuse to shrink past their content.
+
+**Resolution:**
+
+### F-23 [P3] open - The three templates each keep their own copy of the document's rules
+
+**File:** app/components/invoice/templates/CompactTemplate.tsx:1
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** Minimal, Classic, and Compact each carry their own
+`ItemsTable`, `Totals`, `InvoiceFooter`, and `PartyBlock`, roughly 700 lines
+across the three. Different markup per template is the point of having templates,
+and the shared data shaping was correctly extracted to `partyAddressLines`. What
+is duplicated is the small print of the rules: the `No items yet` empty row, the
+footer that disappears when both blocks are empty, the muted placeholder when a
+party has no name, and the subtotal plus total pair. Feature 19 adds tax and
+discount rows to all three, and feature 13 adds a logo, so each is three edits
+that must agree. `templates.test.ts` is the current guard: it asserts field
+parity across every registered template, so a missed copy fails the suite rather
+than shipping.
+**Suggested fix:** leave it for now and revisit at feature 19, when a second
+whole-document change either proves the duplication cheap or expensive. If it
+needs solving, share the predicates (an `isEmptyFooter` style helper) rather than
+a layout component parameterized by props, which would defeat the point of
+separate templates.
+
+**Resolution:**
+
+### F-24 [P3] open - An unrecognized templateId survives in the stored draft
+
+**File:** app/lib/invoice-draft.ts:153
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** `resolveTemplateId` protects rendering, so a garbage
+`templateId` shows the default template with the default segment pressed, which
+was verified in the browser with `"nope"`. The stored value itself is left alone,
+though: `isStoredDraft` does not look at `templateId`, and the draft is written
+back verbatim. It is harmless while the draft only lives in `sessionStorage`, but
+feature 7 maps this draft onto the D1 `Invoice` row, so today's tampered value is
+tomorrow's stored column, and feature 5 posts the same draft to the PDF endpoint.
+**Suggested fix:** normalize on the way in rather than only at render, by running
+`resolveTemplateId` over the parsed draft inside `readStoredDraft`. That keeps one
+rule in one place and pairs naturally with the same fix for F-05 and F-12, which
+are the other two halves of validating a stored draft field by field.
+
+**Resolution:**
+
+### F-25 [P3] open - Classic's table head asks for ink and silently renders muted
+
+**File:** app/components/invoice/templates/ClassicTemplate.tsx:88
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** `HEAD_CELL` is built as `${LABEL} px-2 py-2.5 text-paper-ink`,
+and `LABEL` already ends in `text-paper-muted`. Two utilities set the same
+property, so the winner is decided by their order in the generated stylesheet,
+not by their order in the class attribute, and muted wins. Measured on the
+rendered document: the head cell computes to `rgb(92, 102, 114)` (paper-muted)
+while the paper's ink is `rgb(20, 24, 29)`. The spec asks for a `paper-rule` band
+with ink text, so the band is lower contrast than intended against its own grey
+background, and the `text-paper-ink` in the source is a no-op that reads as
+working. Predates the F-21 repair, which changed the face in `LABEL` and not the
+colour. The `${CELL} text-paper-muted` strings in all three templates are the
+benign version of the same shape: `CELL` carries no colour, so nothing is
+shadowed there.
+**Suggested fix:** stop composing a colour into a constant that already sets one.
+Drop `text-paper-muted` from `LABEL` and let each site state its own colour, which
+also makes the muted default explicit at the four places that want it. A
+`twMerge`-style helper would fix the precedence too, but the project has no such
+wrapper today and one utility conflict does not justify introducing one.
+
 **Resolution:**

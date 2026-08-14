@@ -1,18 +1,22 @@
-import { InvoiceTemplate } from "~/components/invoice/InvoiceTemplate";
+import { TemplateSwitcher } from "~/components/invoice/TemplateSwitcher";
+import { InvoiceDocument } from "~/components/invoice/templates";
 import type { InvoiceDraft } from "~/types/invoice";
 
 /* Editor chrome around the document: the frame, the live bar, and the scrolling
-   area. None of it travels to the PDF, which is why it is separate from
-   InvoiceTemplate rather than a prop on it. */
+   area. None of it travels to the PDF, which is why it is separate from the
+   document rather than a prop on it. */
 
 type PreviewPaneProps = {
 	draft: InvoiceDraft;
+	onChange: (patch: Partial<InvoiceDraft>) => void;
 };
 
-export function PreviewPane({ draft }: PreviewPaneProps) {
+export function PreviewPane({ draft, onChange }: PreviewPaneProps) {
 	return (
 		<div className="overflow-hidden rounded-xl border shadow-sm">
-			<div className="flex items-center gap-3 border-b bg-card px-4 py-3 text-xs text-muted-foreground">
+			{/* flex-wrap so the segments drop to a second line on a narrow screen
+			    rather than crushing the label next to them. */}
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-3 text-xs text-muted-foreground">
 				<span className="flex items-center gap-1.5">
 					<span
 						aria-hidden="true"
@@ -20,6 +24,13 @@ export function PreviewPane({ draft }: PreviewPaneProps) {
 					/>
 					Live preview
 				</span>
+
+				<div className="ml-auto">
+					<TemplateSwitcher
+						templateId={draft.templateId}
+						onSelect={(templateId) => onChange({ templateId })}
+					/>
+				</div>
 			</div>
 
 			{/* The cap applies only where the column is sticky. Below that breakpoint
@@ -29,7 +40,7 @@ export function PreviewPane({ draft }: PreviewPaneProps) {
 			    margin. */}
 			<div className="editor:max-h-[calc(100vh-11rem)] overflow-auto bg-muted p-4">
 				<div className="shadow-sm">
-					<InvoiceTemplate draft={draft} />
+					<InvoiceDocument draft={draft} />
 				</div>
 			</div>
 		</div>

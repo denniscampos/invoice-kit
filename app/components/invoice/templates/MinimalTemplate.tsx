@@ -1,9 +1,10 @@
-import { formatInvoiceDate } from "~/lib/format";
+import { formatInvoiceDate, partyAddressLines } from "~/lib/format";
 import { invoiceSubtotal } from "~/lib/invoice-draft";
 import { formatMoney } from "~/lib/money";
 import type { InvoiceDraft, Party } from "~/types/invoice";
 
-/* The invoice document itself. Pure and SSR safe by contract: no state, no
+/* The default invoice document: modern sans, generous whitespace, hairline
+   rules. Pure and SSR safe by contract, like every template: no state, no
    effects, no window, no clock. Everything it shows comes from the draft it is
    handed, because feature 5 renders this same component to a string on the
    Worker to make the PDF.
@@ -18,7 +19,7 @@ type InvoiceTemplateProps = {
 
 /* The document keeps its own colors in both color schemes. It is paper, not a
    surface, so nothing inside it carries a dark: variant. */
-export function InvoiceTemplate({ draft }: InvoiceTemplateProps) {
+export function MinimalTemplate({ draft }: InvoiceTemplateProps) {
 	return (
 		<article className="grid gap-7 bg-paper px-11 py-10 text-paper-ink">
 			<InvoiceHeader draft={draft} />
@@ -207,24 +208,11 @@ function PartyBlock({
 	placeholder: string;
 }) {
 	const name = party.name.trim();
-	/* Only the lines the user filled in, so a half-filled address reads as a
-	   short address rather than a block of gaps. */
-	// "San Francisco, CA 94105": the postal code joins with a space, not a comma.
-	const cityRegion = [party.city, party.region].filter(Boolean).join(", ");
-	const cityLine = [cityRegion, party.postalCode].filter(Boolean).join(" ");
-
 	/* One list rather than two, so the lines are siblings with keys from a single
 	   sequence. Keyed by position because the list is rebuilt on every render and
 	   never reordered, and because the text itself is not unique: a company in
 	   Singapore can have the same word on three lines. */
-	const lines = [
-		{ text: party.address, numeric: false },
-		{ text: cityLine, numeric: false },
-		{ text: party.country, numeric: false },
-		{ text: party.email, numeric: false },
-		{ text: party.phone, numeric: true },
-		{ text: party.taxId, numeric: true },
-	].filter((line) => line.text);
+	const lines = partyAddressLines(party);
 
 	return (
 		<div>

@@ -101,7 +101,7 @@ export default function Editor() {
 				</div>
 
 				<div className="editor:sticky editor:top-20">
-					<PreviewPane draft={draft} />
+					<PreviewPane draft={draft} onChange={patchDraft} />
 				</div>
 			</main>
 		</>

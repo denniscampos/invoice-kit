@@ -1,3 +1,4 @@
+import { DEFAULT_TEMPLATE_ID } from "~/lib/invoice-templates";
 import { lineItemTotal } from "~/lib/money";
 import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
 
@@ -7,7 +8,6 @@ export const DRAFT_VERSION = 1;
    The version is in the key and in the payload; a mismatch discards. */
 export const DRAFT_STORAGE_KEY = "invoice-kit:draft:v1";
 export const DEFAULT_CURRENCY = "USD";
-export const DEFAULT_TEMPLATE_ID = "minimal";
 export const DEFAULT_INVOICE_NUMBER = "INV-0001";
 export const DUE_DATE_OFFSET_DAYS = 30;
 
