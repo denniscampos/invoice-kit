@@ -1,4 +1,5 @@
-import type { InvoiceDraft, Party } from "~/types/invoice";
+import { lineItemTotal } from "~/lib/money";
+import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
 
 export const DRAFT_VERSION = 1;
 /* sessionStorage, not localStorage: the draft holds a client's name, address,
@@ -51,6 +52,82 @@ export function nextDueDate(
 	issueDate: string,
 ): string {
 	return isDueDatePinned(draft) ? draft.dueDate : defaultDueDate(issueDate);
+}
+
+/* Line item helpers. Each takes the draft and returns a new lineItems array,
+   never mutating, so the caller can hand the result straight to setState. They
+   are pure on purpose: the ordering rules are the part worth testing, and they
+   should be testable without a DOM or a drag library. */
+
+type DraftItems = Pick<InvoiceDraft, "lineItems">;
+
+/* position mirrors array order and is renumbered after every structural change,
+   so it stays contiguous for feature 7 to persist and feature 3 to render. */
+function renumber(items: LineItem[]): LineItem[] {
+	return items.map((item, index) =>
+		item.position === index ? item : { ...item, position: index },
+	);
+}
+
+/* Quantity starts at 1 because that is what an added row almost always means;
+   the rest is blank for the user to fill. */
+export function createLineItem(): LineItem {
+	return {
+		id: crypto.randomUUID(),
+		position: 0,
+		name: "",
+		description: "",
+		quantity: 1,
+		rate: 0,
+		total: 0,
+	};
+}
+
+export function addLineItem(draft: DraftItems): LineItem[] {
+	return renumber([...draft.lineItems, createLineItem()]);
+}
+
+export function removeLineItem(draft: DraftItems, id: string): LineItem[] {
+	return renumber(draft.lineItems.filter((item) => item.id !== id));
+}
+
+export function updateLineItem(
+	draft: DraftItems,
+	id: string,
+	patch: Partial<Omit<LineItem, "id" | "position" | "total">>,
+): LineItem[] {
+	return draft.lineItems.map((item) => {
+		if (item.id !== id) return item;
+
+		const updated = { ...item, ...patch };
+		// Recomputed unconditionally so the stored total can never disagree with
+		// the quantity and rate sitting next to it.
+		updated.total = lineItemTotal(updated.quantity, updated.rate);
+		return updated;
+	});
+}
+
+/* Moves the dragged item to the dropped-on item's position. Anything that does
+   not describe a real move (unknown id, dropped on itself) returns the list
+   unchanged rather than throwing, because a drag library will report those. */
+export function reorderLineItems(
+	draft: DraftItems,
+	fromId: string,
+	toId: string,
+): LineItem[] {
+	const from = draft.lineItems.findIndex((item) => item.id === fromId);
+	const to = draft.lineItems.findIndex((item) => item.id === toId);
+	if (from === -1 || to === -1 || from === to) return draft.lineItems;
+
+	const reordered = [...draft.lineItems];
+	const [moved] = reordered.splice(from, 1);
+	reordered.splice(to, 0, moved);
+
+	return renumber(reordered);
+}
+
+export function invoiceSubtotal(draft: DraftItems): number {
+	return draft.lineItems.reduce((sum, item) => sum + item.total, 0);
 }
 
 function emptyParty(): Party {

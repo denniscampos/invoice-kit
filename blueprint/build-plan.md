@@ -64,7 +64,7 @@ cleaned-up checkbox version before generating the project overview.
 ## MVP
 
 - [x] 1. **Invoice editor** - create a new invoice with bill from, bill to, invoice details, payment terms, and notes
-- [ ] 2. **Line items** - add, edit, remove, and total multiple invoice line items
+- [x] 2. **Line items** - add, edit, remove, and total multiple invoice line items
 - [ ] 3. **Live invoice preview** - show a minimal invoice template that updates as the form is filled out
 - [ ] 4. **Template selection** - switch between simple invoice templates for the preview and final PDF
 - [ ] 5. **PDF generation** - generate and download PDF invoices from HTML templates using Cloudflare Browser Rendering/Puppeteer, with no account needed

@@ -29,8 +29,8 @@ duplicates, or define them as aliases such as
 **File:** app/lib/invoice-draft.ts:3
 **Found:** 2026-08-13 by /audit (scope: current)
 **Why it matters:** `DRAFT_VERSION`, `DRAFT_STORAGE_KEY`, `DEFAULT_CURRENCY`,
-`DEFAULT_TEMPLATE_ID`, `DEFAULT_INVOICE_NUMBER`, and `toIsoDate` are exported but
-used only inside their own module. `coding-standards.md` calls for no unused
+`DEFAULT_TEMPLATE_ID`, `DEFAULT_INVOICE_NUMBER`, `toIsoDate`, and (added by
+feature 2) `createLineItem` are exported but used only inside their own module. `coding-standards.md` calls for no unused
 exports. Several are plausible API for features 7 and 8, so this is a judgment
 call rather than dead code.
 **Suggested fix:** drop `export` from the ones nothing outside the module needs,
@@ -88,19 +88,71 @@ worth doing on its own; worth doing if feature 18 or 19 adds more derived date
 behavior.
 **Resolution:**
 
-### F-09 [P3] fixed - Spec describes an Invoices nav item the app bar does not render
+### F-11 [P3] open - An out-of-range line total silently renders as zero
 
-**File:** app/components/AppBar.tsx:10
+**File:** app/lib/money.ts:60
 **Found:** 2026-08-14 by /audit (scope: current)
-**Why it matters:** Step 4 of `current-feature.md` describes the app bar as
-"brand mark, Editor and Invoices nav"; the built app bar has only Editor. The code
-is right and the spec is stale: `/invoices` does not exist until feature 9, and
-rendering a link to it would be exactly the dead control the spec's Out of scope
-section forbids. The mismatch matters only because `/complete` archives this spec
-as the record of what shipped, so the archive would misdescribe the app bar.
-**Suggested fix:** reword step 4 to "brand mark and Editor nav; Invoices arrives
-with feature 9" before `/complete` archives it. Documentation only, no code
-change.
-**Resolution:** Fixed 2026-08-14 by /implement. Step 4 of `current-feature.md`
-now describes the app bar as it was actually built and records why Invoices is
-absent. No code change; the app bar was already right.
+**Why it matters:** `lineItemTotal` returns `0` when the product leaves safe
+integer range, so a quantity of `99999999999999` at `1000.00` shows an amount of
+`0.00` rather than refusing the input. Reproduced in the running app. Zero is a
+worse answer than the last good value, because it silently changes the invoice
+total. Only reachable with an absurd quantity, hence P3.
+**Suggested fix:** have `lineItemTotal` return `null` for the out-of-range case
+and let the caller keep the previous total, matching how the parsers already
+treat input they cannot represent. Alternatively bound `parseQuantity` to a
+sensible maximum so the product can never overflow.
+**Resolution:**
+
+### F-12 [P3] open - Stored line items are not validated field by field
+
+**File:** app/lib/invoice-draft.ts:62
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** `isStoredDraft` checks only that `lineItems` is an array, so
+a stored draft whose items lack `total` or `rate` passes the guard.
+`formatMinorUnits(undefined)` then renders `NaN.NaN` in the Amount column, and
+`invoiceSubtotal` returns `NaN` for the whole invoice. This is the same tampering
+path as F-05 and needs the same answer; it is recorded separately because it is a
+new surface that feature 2 introduced, not a restatement of the party-object gap.
+**Suggested fix:** whatever fixes F-05 should cover line items too: validate the
+numeric fields per item and drop the stored draft when they do not hold, rather
+than merging defaults into a half-real invoice.
+**Resolution:**
+
+### F-13 [P3] open - The amount and total columns show no currency
+
+**File:** app/components/invoice/LineItemsCard.tsx:99
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** The mockup's total line reads `$8,680.00`; the built card
+reads `8,680.00`. The invoice carries a currency the user can change in the field
+directly above, and nothing on the card reflects it, so a EUR invoice and a USD
+invoice look identical. Cosmetic today because feature 3's preview will show the
+currency, which is why this is P3 rather than a contract problem.
+**Suggested fix:** render the currency code beside the total (`USD 8,680.00`)
+rather than a symbol, since the symbol table is exactly the per-currency
+knowledge `money.ts` deliberately does not carry yet. Decide it with feature 3 so
+the card and the preview agree.
+**Resolution:**
+
+### F-15 [P3] open - A European thousands dot reads as a decimal point
+
+**File:** app/lib/money.ts:16
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** The mirror of the ambiguity F-10 accepted. A single dot is
+always the decimal point, so `"1.234"` typed by someone who means one thousand
+two hundred and thirty four parses as `1.23`. Reproduced in the running app. It
+is the same unsolvable-from-the-string problem as `1,250`, resolved the other way
+because each separator follows the en-US convention, and the error runs in the
+safer direction (an undercharge the user is likely to notice) but is a thousand
+fold rather than a hundred fold.
+**Suggested fix:** nothing local will settle it, because the string genuinely
+carries both readings. The durable answer is a number format that follows the
+selected currency or an explicit locale setting (feature 22), at which point
+both this and the `1,250` case become deterministic. Until then it is a
+documented limitation, not a bug to patch.
+
+Updated 2026-08-14 by /audit: since the F-14 repair, `parseQuantity` shares the
+same helper, so this limitation now applies to the quantity column as well as
+the rate. That is the right trade, since the two fields agreeing matters more
+than either one guessing differently, but it widens what a locale setting would
+have to fix.
+**Resolution:**

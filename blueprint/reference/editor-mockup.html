@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Invoice Kit - Editor</title>
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap"
+		/>
+		<link rel="stylesheet" href="theme.css" />
+		<style>
+			.editor {
+				display: grid;
+				grid-template-columns: minmax(420px, 1fr) minmax(520px, 1.05fr);
+				gap: var(--space-5);
+				padding: var(--space-5);
+				align-items: start;
+				max-width: 1560px;
+				margin: 0 auto;
+			}
+
+			.form-col {
+				display: grid;
+				gap: var(--space-4);
+			}
+
+			.preview-col {
+				position: sticky;
+				top: calc(var(--header-h) + var(--space-5));
+			}
+
+			.preview-frame {
+				border: 1px solid var(--border);
+				border-radius: var(--radius-lg);
+				box-shadow: var(--shadow-md);
+				overflow: hidden;
+			}
+
+			.preview-bar {
+				display: flex;
+				align-items: center;
+				gap: var(--space-3);
+				padding: var(--space-3) var(--space-4);
+				background: var(--surface);
+				border-bottom: 1px solid var(--border);
+				font-size: var(--text-xs);
+				color: var(--muted);
+			}
+
+			.preview-bar .live::before {
+				content: "";
+				display: inline-block;
+				width: 6px;
+				height: 6px;
+				border-radius: 999px;
+				background: var(--status-paid-fg);
+				margin-right: 6px;
+			}
+
+			.template-switch {
+				display: flex;
+				gap: 2px;
+				padding: 2px;
+				background: var(--surface-sunken);
+				border-radius: var(--radius-sm);
+			}
+
+			.template-switch button {
+				appearance: none;
+				border: 0;
+				background: transparent;
+				font: inherit;
+				font-size: var(--text-xs);
+				color: var(--muted);
+				padding: 3px 10px;
+				border-radius: 4px;
+				cursor: pointer;
+			}
+
+			.template-switch button[aria-pressed="true"] {
+				background: var(--surface);
+				color: var(--text);
+				box-shadow: var(--shadow-sm);
+				font-weight: 500;
+			}
+
+			/* the preview renders the real document at reduced scale */
+			.preview-scroll {
+				background: var(--surface-sunken);
+				max-height: calc(100vh - var(--header-h) - 140px);
+				overflow: auto;
+				padding: var(--space-4);
+			}
+
+			.preview-scroll .paper {
+				box-shadow: var(--shadow-sm);
+				border-radius: var(--radius-sm);
+			}
+
+			/* line item editor rows */
+			.items-editor {
+				display: grid;
+				gap: var(--space-2);
+			}
+
+			.items-head,
+			.item-row {
+				display: grid;
+				grid-template-columns: 1fr 78px 110px 104px 32px;
+				gap: var(--space-2);
+				align-items: center;
+			}
+
+			.items-head {
+				font-size: var(--text-xs);
+				font-weight: 500;
+				color: var(--muted);
+				padding: 0 var(--space-1);
+			}
+
+			.items-head span:nth-child(n + 2) {
+				text-align: right;
+			}
+
+			.item-row input {
+				font: inherit;
+				color: var(--text);
+				background: var(--surface);
+				border: 1px solid var(--border-strong);
+				border-radius: var(--radius-sm);
+				padding: 7px var(--space-3);
+				width: 100%;
+			}
+
+			.item-row input.r {
+				text-align: right;
+			}
+
+			.item-total {
+				text-align: right;
+				font-weight: 500;
+				padding-right: var(--space-2);
+			}
+
+			.item-drop {
+				border: 0;
+				background: transparent;
+				color: var(--faint);
+				cursor: pointer;
+				font-size: 15px;
+				border-radius: var(--radius-sm);
+				height: 30px;
+			}
+
+			.item-drop:hover {
+				background: var(--status-overdue-bg);
+				color: var(--status-overdue-fg);
+			}
+
+			.subtotal-line {
+				display: flex;
+				justify-content: flex-end;
+				gap: var(--space-5);
+				padding-top: var(--space-3);
+				border-top: 1px solid var(--border);
+				font-weight: 500;
+			}
+
+			.subtotal-line span:first-child {
+				color: var(--muted);
+				font-weight: 400;
+			}
+
+			.hint {
+				font-size: var(--text-xs);
+				color: var(--faint);
+			}
+
+			.save-note {
+				display: flex;
+				align-items: center;
+				gap: var(--space-2);
+				font-size: var(--text-xs);
+				color: var(--muted);
+				background: var(--accent-wash);
+				border: 1px solid var(--border);
+				border-radius: var(--radius);
+				padding: var(--space-3) var(--space-4);
+			}
+
+			.save-note a {
+				color: var(--accent);
+				font-weight: 500;
+			}
+
+			@media (max-width: 1080px) {
+				.editor {
+					grid-template-columns: 1fr;
+				}
+
+				.preview-col {
+					position: static;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<header class="appbar">
+			<div class="brand"><span class="brand-mark">IK</span> Invoice Kit</div>
+			<nav>
+				<a href="editor.html" class="active">Editor</a>
+				<a href="invoices.html">Invoices</a>
+			</nav>
+			<div class="spacer"></div>
+			<button class="btn btn-ghost">Sign in</button>
+			<button class="btn">Save</button>
+			<button class="btn btn-primary">Download PDF</button>
+		</header>
+
+		<main class="editor">
+			<div class="form-col">
+				<div class="save-note">
+					<span
+						>Not signed in. Your invoice stays in this tab.
+						<a href="#">Create an account</a> to save it.</span
+					>
+				</div>
+
+				<section class="card">
+					<div class="card-head"><h2>Invoice details</h2></div>
+					<div class="card-body">
+						<div class="row row-3">
+							<div class="field">
+								<label for="num">Invoice number</label>
+								<input id="num" class="num" value="INV-0007" />
+							</div>
+							<div class="field">
+								<label for="issue">Issue date</label>
+								<input id="issue" type="date" class="num" value="2026-08-13" />
+							</div>
+							<div class="field">
+								<label for="due">Due date</label>
+								<input id="due" type="date" class="num" value="2026-09-12" />
+							</div>
+						</div>
+						<div class="row row-3">
+							<div class="field">
+								<label for="cur">Currency</label>
+								<select id="cur">
+									<option selected>USD</option>
+									<option>EUR</option>
+									<option>GBP</option>
+									<option>CAD</option>
+									<option>AUD</option>
+								</select>
+							</div>
+							<div class="field" style="grid-column: span 2">
+								<label for="terms">Payment terms</label>
+								<input id="terms" value="Net 30" />
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card-head"><h2>Bill from</h2></div>
+					<div class="card-body">
+						<div class="row row-2">
+							<div class="field">
+								<label for="fn">Name</label>
+								<input id="fn" value="Acme Studio" />
+							</div>
+							<div class="field">
+								<label for="fe">Email</label>
+								<input id="fe" value="billing@acmestudio.co" />
+							</div>
+						</div>
+						<div class="row row-2">
+							<div class="field">
+								<label for="fa">Address</label>
+								<input id="fa" value="118 Fremont Street" />
+							</div>
+							<div class="field">
+								<label for="fp">Phone</label>
+								<input id="fp" class="num" value="+1 415 555 0142" />
+							</div>
+						</div>
+						<div class="row row-3">
+							<div class="field">
+								<label for="fc">City</label>
+								<input id="fc" value="San Francisco" />
+							</div>
+							<div class="field">
+								<label for="fr">State / region</label>
+								<input id="fr" value="CA" />
+							</div>
+							<div class="field">
+								<label for="fz">ZIP / postal code</label>
+								<input id="fz" class="num" value="94105" />
+							</div>
+						</div>
+						<div class="row row-2">
+							<div class="field">
+								<label for="fco">Country</label>
+								<input id="fco" value="United States" />
+							</div>
+							<div class="field">
+								<label for="ft">Tax / business ID</label>
+								<input id="ft" class="num" value="EIN 84-2910773" />
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card-head"><h2>Bill to</h2></div>
+					<div class="card-body">
+						<div class="row row-2">
+							<div class="field">
+								<label for="tn">Name</label>
+								<input id="tn" value="Northwind Ltd" />
+							</div>
+							<div class="field">
+								<label for="te">Email</label>
+								<input id="te" value="accounts@northwind.co.uk" />
+							</div>
+						</div>
+						<div class="row row-2">
+							<div class="field">
+								<label for="ta">Address</label>
+								<input id="ta" value="42 Bishopsgate" />
+							</div>
+							<div class="field">
+								<label for="tp">Phone</label>
+								<input id="tp" class="num" value="+44 20 7946 0812" />
+							</div>
+						</div>
+						<div class="row row-3">
+							<div class="field">
+								<label for="tc">City</label>
+								<input id="tc" value="London" />
+							</div>
+							<div class="field">
+								<label for="tr">State / region</label>
+								<input id="tr" value="Greater London" />
+							</div>
+							<div class="field">
+								<label for="tz">ZIP / postal code</label>
+								<input id="tz" class="num" value="EC2N 4AH" />
+							</div>
+						</div>
+						<div class="row row-2">
+							<div class="field">
+								<label for="tco">Country</label>
+								<input id="tco" value="United Kingdom" />
+							</div>
+							<div class="field">
+								<label for="tt">Tax / business ID</label>
+								<input id="tt" class="num" value="VAT GB 412 9938 27" />
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card-head">
+						<h2>Line items</h2>
+						<div class="spacer"></div>
+						<button class="btn">Add item</button>
+					</div>
+					<div class="card-body">
+						<div class="items-editor">
+							<div class="items-head">
+								<span>Description</span><span>Qty</span><span>Rate</span
+								><span>Amount</span><span></span>
+							</div>
+
+							<div class="item-row">
+								<input value="Brand identity system" />
+								<input class="num r" value="18" />
+								<input class="num r" value="145.00" />
+								<div class="item-total num">2,610.00</div>
+								<button class="item-drop" title="Remove">&times;</button>
+							</div>
+							<div class="item-row">
+								<input value="Marketing site design" />
+								<input class="num r" value="24" />
+								<input class="num r" value="145.00" />
+								<div class="item-total num">3,480.00</div>
+								<button class="item-drop" title="Remove">&times;</button>
+							</div>
+							<div class="item-row">
+								<input value="Design system components" />
+								<input class="num r" value="12" />
+								<input class="num r" value="145.00" />
+								<div class="item-total num">1,740.00</div>
+								<button class="item-drop" title="Remove">&times;</button>
+							</div>
+							<div class="item-row">
+								<input value="Launch asset pack" />
+								<input class="num r" value="1" />
+								<input class="num r" value="850.00" />
+								<div class="item-total num">850.00</div>
+								<button class="item-drop" title="Remove">&times;</button>
+							</div>
+
+							<div class="subtotal-line">
+								<span>Total</span>
+								<span class="num">$8,680.00</span>
+							</div>
+						</div>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="card-head"><h2>Notes</h2></div>
+					<div class="card-body">
+						<div class="field">
+							<label for="notes">Additional notes</label>
+							<textarea id="notes">
+Payment by bank transfer. Late payments accrue 1.5% monthly interest after 30 days.</textarea
+							>
+							<span class="hint">Shown at the bottom of the invoice.</span>
+						</div>
+					</div>
+				</section>
+			</div>
+
+			<div class="preview-col">
+				<div class="preview-frame">
+					<div class="preview-bar">
+						<span class="live">Live preview</span>
+						<div class="spacer"></div>
+						<div class="template-switch">
+							<button aria-pressed="true">Minimal</button>
+							<button aria-pressed="false">Classic</button>
+							<button aria-pressed="false">Compact</button>
+						</div>
+					</div>
+					<div class="preview-scroll">
+						<article class="paper">
+							<header class="paper-head">
+								<div>
+									<div class="paper-logo">A</div>
+									<h1 class="paper-title">Invoice</h1>
+									<div class="num" style="color: var(--paper-muted)">
+										INV-0007
+									</div>
+								</div>
+								<div class="paper-meta num">
+									<div>Issued <strong>13 Aug 2026</strong></div>
+									<div>Due <strong>12 Sep 2026</strong></div>
+									<div>Terms <strong>Net 30</strong></div>
+								</div>
+							</header>
+
+							<section class="paper-parties">
+								<div>
+									<h3>From</h3>
+									<address>
+										<b>Acme Studio</b>
+										118 Fremont Street<br />
+										San Francisco, CA 94105<br />
+										United States<br />
+										billing@acmestudio.co<br />
+										<span class="num">EIN 84-2910773</span>
+									</address>
+								</div>
+								<div>
+									<h3>Bill to</h3>
+									<address>
+										<b>Northwind Ltd</b>
+										42 Bishopsgate<br />
+										London, Greater London EC2N 4AH<br />
+										United Kingdom<br />
+										accounts@northwind.co.uk<br />
+										<span class="num">VAT GB 412 9938 27</span>
+									</address>
+								</div>
+							</section>
+
+							<table class="items">
+								<thead>
+									<tr>
+										<th>Description</th>
+										<th class="r">Qty</th>
+										<th class="r">Rate</th>
+										<th class="r">Amount</th>
+									</tr>
+								</thead>
+								<tbody>
+									<tr>
+										<td>Brand identity system</td>
+										<td class="r num">18</td>
+										<td class="r num">$145.00</td>
+										<td class="r num">$2,610.00</td>
+									</tr>
+									<tr>
+										<td>Marketing site design</td>
+										<td class="r num">24</td>
+										<td class="r num">$145.00</td>
+										<td class="r num">$3,480.00</td>
+									</tr>
+									<tr>
+										<td>Design system components</td>
+										<td class="r num">12</td>
+										<td class="r num">$145.00</td>
+										<td class="r num">$1,740.00</td>
+									</tr>
+									<tr>
+										<td>Launch asset pack</td>
+										<td class="r num">1</td>
+										<td class="r num">$850.00</td>
+										<td class="r num">$850.00</td>
+									</tr>
+								</tbody>
+							</table>
+
+							<div class="totals num">
+								<div><span>Subtotal</span><span>$8,680.00</span></div>
+								<div class="grand">
+									<span>Total due</span><span>$8,680.00 USD</span>
+								</div>
+							</div>
+
+							<footer class="paper-foot">
+								<div>
+									<h3>Payment terms</h3>
+									<p>Net 30</p>
+								</div>
+								<div>
+									<h3>Notes</h3>
+									<p>
+										Payment by bank transfer. Late payments accrue 1.5% monthly
+										interest after 30 days.
+									</p>
+								</div>
+							</footer>
+						</article>
+					</div>
+				</div>
+			</div>
+		</main>
+	</body>
+</html>
