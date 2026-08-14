@@ -46,7 +46,7 @@ judgment call, same fix. Updated again the same day: the F-20 repair gave
 `PartyAddressLine` a real importer in `CompactTemplate.tsx`, so it leaves this
 list too. The original six from feature 1 and 2 are what remain.
 
-### F-05 [P3] open - A tampered draft with a partial party object breaks its inputs
+### F-05 [P3] fixed - A tampered draft with a partial party object breaks its inputs
 
 **File:** app/lib/invoice-draft.ts:52
 **Found:** 2026-08-13 by /audit (scope: current)
@@ -59,7 +59,15 @@ always writes whole drafts, so the risk is low.
 **Suggested fix:** merge the parsed draft over `createEmptyDraft()` (including
 both party objects) before returning it, so missing keys fall back to empty
 strings.
-**Resolution:**
+**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a. `isStoredDraft`
+is gone, replaced by `parseDraft`, which checks all nine string fields of both
+party objects and discards the draft when any is missing rather than merging
+defaults into it. Discarding beat merging because a half-real invoice that looks
+complete is worse than an empty editor.
+
+Verified in the browser with the finding's own repro, a stored draft whose
+`billFrom` is `{ name: "Acme Studio" }`: the editor opens on a clean empty draft,
+every input is controlled, and the console is silent.
 
 ### F-06 [P3] open - CSS-only packages sit in runtime dependencies
 
@@ -111,7 +119,7 @@ treat input they cannot represent. Alternatively bound `parseQuantity` to a
 sensible maximum so the product can never overflow.
 **Resolution:**
 
-### F-12 [P3] open - Stored line items are not validated field by field
+### F-12 [P3] fixed - Stored line items are not validated field by field
 
 **File:** app/lib/invoice-draft.ts:62
 **Found:** 2026-08-14 by /audit (scope: current)
@@ -124,7 +132,15 @@ new surface that feature 2 introduced, not a restatement of the party-object gap
 **Suggested fix:** whatever fixes F-05 should cover line items too: validate the
 numeric fields per item and drop the stored draft when they do not hold, rather
 than merging defaults into a half-real invoice.
-**Resolution:**
+**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a. `parseDraft`
+validates every line item field by field: `id`, `name`, and `description` must be
+strings, `quantity` finite, and `position`, `rate`, and `total` integers. NaN and
+Infinity are rejected explicitly, since both pass a `typeof` check and then print
+as `NaN` on the invoice, and a fractional cent is rejected as corruption of the
+minor-units rule.
+
+Verified with a stored line item holding only `id`, `position`, and `name`: the
+draft is discarded, the document renders no `NaN`, and the console is silent.
 
 ### F-15 [P3] open - A European thousands dot reads as a decimal point
 
@@ -215,7 +231,7 @@ separate templates.
 
 **Resolution:**
 
-### F-24 [P3] open - An unrecognized templateId survives in the stored draft
+### F-24 [P3] fixed - An unrecognized templateId survives in the stored draft
 
 **File:** app/lib/invoice-draft.ts:153
 **Found:** 2026-08-14 by /audit (scope: current)
@@ -231,7 +247,16 @@ tomorrow's stored column, and feature 5 posts the same draft to the PDF endpoint
 rule in one place and pairs naturally with the same fix for F-05 and F-12, which
 are the other two halves of validating a stored draft field by field.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a, by the route
+the finding recommended: `parseDraft` runs `resolveTemplateId` over the incoming
+value, so normalization happens on the way in rather than only at render, and
+`readStoredDraft` now returns a draft whose `templateId` is always renderable.
+It is the one field normalized rather than rejected, because the registry already
+answers for it.
+
+Verified with `templateId: "nope"` in sessionStorage: the restored draft carries
+`minimal`, the Minimal segment is pressed, and a later write cannot persist the
+tampered value back.
 
 ### F-25 [P3] open - Classic's table head asks for ink and silently renders muted
 

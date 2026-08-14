@@ -1,0 +1,114 @@
+import { describe, expect, it } from "vitest";
+import { createEmptyDraft } from "./invoice-draft";
+import { buildPrintDocument } from "./print-document.server";
+import type { InvoiceDraft } from "~/types/invoice";
+
+/* Real CSS is passed in rather than imported: PRINT_STYLES resolves to an empty
+   string under Vitest, which loads none of the app's Vite plugins. */
+const STYLES = ".bg-paper{background-color:var(--color-paper)}";
+
+function draft(overrides: Partial<InvoiceDraft> = {}): InvoiceDraft {
+	return {
+		...createEmptyDraft(new Date(2026, 7, 14)),
+		invoiceNumber: "INV-0042",
+		billFrom: {
+			...createEmptyDraft(new Date(2026, 7, 14)).billFrom,
+			name: "Acme Studio",
+		},
+		lineItems: [
+			{
+				id: "a",
+				position: 0,
+				name: "Brand identity system",
+				description: "Logo and type scale",
+				quantity: 1,
+				rate: 450000,
+				total: 450000,
+			},
+		],
+		...overrides,
+	};
+}
+
+describe("buildPrintDocument", () => {
+	it("is a whole HTML document", () => {
+		const html = buildPrintDocument(draft(), STYLES);
+
+		expect(html.startsWith("<!doctype html>")).toBe(true);
+		expect(html).toContain('<html lang="en">');
+		expect(html).toContain('<meta charset="utf-8" />');
+		expect(html.trimEnd().endsWith("</html>")).toBe(true);
+	});
+
+	it("sizes itself to a letter page with no margin of its own", () => {
+		const html = buildPrintDocument(draft(), STYLES);
+
+		expect(html).toContain("@page { size: Letter; margin: 0; }");
+		expect(html).toContain("width: 8.5in");
+		expect(html).toContain("min-height: 11in");
+	});
+
+	it("carries the styles it was given inside the style tag", () => {
+		const html = buildPrintDocument(draft(), STYLES);
+		const style = html.slice(html.indexOf("<style>"), html.indexOf("</style>"));
+
+		expect(style).toContain(STYLES);
+	});
+
+	it("links the same webfont the app does", () => {
+		const html = buildPrintDocument(draft(), STYLES);
+
+		expect(html).toContain("fonts.googleapis.com/css2?family=Inter");
+	});
+
+	it("renders the invoice itself", () => {
+		const html = buildPrintDocument(draft(), STYLES);
+
+		expect(html).toContain("INV-0042");
+		expect(html).toContain("Acme Studio");
+		expect(html).toContain("Brand identity system");
+		expect(html).toContain("$4,500.00");
+	});
+
+	it("renders the template the draft asks for", () => {
+		const minimal = buildPrintDocument(draft({ templateId: "minimal" }), STYLES);
+		const compact = buildPrintDocument(draft({ templateId: "compact" }), STYLES);
+
+		expect(minimal).not.toEqual(compact);
+		// Compact is the only one that sets its base size on the paper.
+		expect(compact).toContain("text-[11px]");
+		expect(minimal).not.toContain("text-[11px]");
+	});
+
+	/* Nothing in a printed invoice needs to run, and 5b feeds this straight to a
+	   browser, so a script tag would be someone else's code executing. */
+	it("contains no script", () => {
+		const html = buildPrintDocument(
+			draft({ notes: "<script>alert(1)</script>" }),
+			STYLES,
+		);
+
+		expect(html).not.toContain("<script");
+	});
+
+	/* The invoice number is user input interpolated into a hand written title,
+	   the one place React's escaping does not reach. */
+	it("escapes the invoice number in the title", () => {
+		const html = buildPrintDocument(
+			draft({ invoiceNumber: '</title><script>alert(1)</script>' }),
+			STYLES,
+		);
+
+		expect(html).not.toContain("</title><script>");
+		expect(html).toContain("&lt;/title&gt;");
+	});
+
+	it("still produces a document for an empty draft", () => {
+		const html = buildPrintDocument(createEmptyDraft(new Date(2026, 7, 14)));
+
+		expect(html).toContain("Your business");
+		expect(html).toContain("No items yet");
+		expect(html).not.toContain("undefined");
+		expect(html).not.toContain("NaN");
+	});
+});

@@ -3,6 +3,7 @@ import {
 	addDays,
 	addLineItem,
 	createEmptyDraft,
+	parseDraft,
 	invoiceSubtotal,
 	isDueDatePinned,
 	nextDueDate,
@@ -11,7 +12,7 @@ import {
 	toIsoDate,
 	updateLineItem,
 } from "./invoice-draft";
-import type { LineItem } from "~/types/invoice";
+import type { InvoiceDraft, LineItem } from "~/types/invoice";
 
 describe("toIsoDate", () => {
 	it("uses the local calendar date, not UTC", () => {
@@ -204,5 +205,157 @@ describe("invoiceSubtotal", () => {
 
 	it("is zero for a draft with no items", () => {
 		expect(invoiceSubtotal(createEmptyDraft(new Date(2026, 7, 14)))).toBe(0);
+	});
+});
+
+describe("parseDraft", () => {
+	/* A draft the app itself wrote, as the round trip through sessionStorage
+	   hands it back. Everything below is a mutation of this. */
+	function stored(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+		const draft: InvoiceDraft = {
+			...createEmptyDraft(new Date(2026, 7, 14)),
+			invoiceNumber: "INV-0007",
+			currency: "EUR",
+			paymentTerms: "Net 30",
+			notes: "Thanks.",
+			billTo: {
+				name: "Northwind Trading",
+				address: "12 Bishopsgate",
+				city: "London",
+				region: "Greater London",
+				postalCode: "EC2N 3AR",
+				country: "United Kingdom",
+				email: "ap@northwind.example",
+				phone: "+44 20 7946 0958",
+				taxId: "GB 123456789",
+			},
+			lineItems: [
+				{
+					id: "a",
+					position: 0,
+					name: "Brand identity system",
+					description: "Logo and type scale",
+					quantity: 1.5,
+					rate: 450000,
+					total: 675000,
+				},
+			],
+		};
+
+		return { ...JSON.parse(JSON.stringify(draft)), ...overrides };
+	}
+
+	it("returns a draft that survived the round trip unchanged", () => {
+		const input = stored();
+
+		expect(parseDraft(input)).toEqual(input);
+	});
+
+	it("keeps a quantity that is not a whole number", () => {
+		// Money is integer minor units; quantity is deliberately not.
+		expect(parseDraft(stored())?.lineItems[0].quantity).toBe(1.5);
+	});
+
+	it.each([
+		["null", null],
+		["undefined", undefined],
+		["an array", []],
+		["a string", "nope"],
+		["a number", 4],
+		["an empty object", {}],
+	])("rejects %s", (_label, value) => {
+		expect(parseDraft(value)).toBeNull();
+	});
+
+	it.each([
+		["a missing version", { version: undefined }],
+		["a version from another shape", { version: 2 }],
+		["a status it does not own", { status: "paid" }],
+		["a missing invoice number", { invoiceNumber: undefined }],
+		["a non-string invoice number", { invoiceNumber: 7 }],
+		["a missing currency", { currency: undefined }],
+		["a missing issue date", { issueDate: undefined }],
+		["a missing due date", { dueDate: undefined }],
+		["missing payment terms", { paymentTerms: undefined }],
+		["missing notes", { notes: undefined }],
+		["a missing party", { billTo: undefined }],
+		["a party that is not an object", { billFrom: "Acme" }],
+		["line items that are not an array", { lineItems: {} }],
+	])("rejects %s", (_label, overrides) => {
+		expect(parseDraft(stored(overrides))).toBeNull();
+	});
+
+	/* F-05: a party object missing its fields used to pass the old guard, then
+	   flip a controlled input to uncontrolled once the editor read it. */
+	it("rejects a party object missing fields", () => {
+		expect(parseDraft(stored({ billFrom: { name: "Acme" } }))).toBeNull();
+	});
+
+	it("rejects a party field that is not a string", () => {
+		const billTo = { ...(stored().billTo as object), postalCode: 94105 };
+
+		expect(parseDraft(stored({ billTo }))).toBeNull();
+	});
+
+	/* F-12: a line item missing its numbers used to reach the document, where
+	   the amount column rendered NaN.NaN and the invoice total became NaN. */
+	it.each([
+		["a missing total", { total: undefined }],
+		["a non-numeric total", { total: "675000" }],
+		["a NaN total", { total: Number.NaN }],
+		["an infinite quantity", { quantity: Number.POSITIVE_INFINITY }],
+		["a fractional cent", { rate: 1200.5 }],
+		["a missing id", { id: undefined }],
+		["a missing name", { name: undefined }],
+		["a missing description", { description: undefined }],
+		["a missing position", { position: undefined }],
+		["an item that is not an object", null],
+	])("rejects a line item with %s", (_label, itemOverrides) => {
+		const base = (stored().lineItems as Record<string, unknown>[])[0];
+		const item = itemOverrides === null ? null : { ...base, ...itemOverrides };
+
+		expect(parseDraft(stored({ lineItems: [item] }))).toBeNull();
+	});
+
+	it("accepts an invoice with no line items", () => {
+		expect(parseDraft(stored({ lineItems: [] }))?.lineItems).toEqual([]);
+	});
+
+	/* F-24: the id is normalized rather than rejected, because the registry
+	   already decides what an unknown template renders as. */
+	it.each([
+		["an unregistered id", "nope"],
+		["a missing id", undefined],
+		["a number", 4],
+	])("falls back to the default template for %s", (_label, templateId) => {
+		expect(parseDraft(stored({ templateId }))?.templateId).toBe("minimal");
+	});
+
+	it("keeps a registered template id", () => {
+		expect(parseDraft(stored({ templateId: "compact" }))?.templateId).toBe(
+			"compact",
+		);
+	});
+
+	/* Fields are copied one by one, so nothing unrecognized rides along into the
+	   app or into the document the PDF is made from. */
+	it("drops keys it does not recognize", () => {
+		const parsed = parseDraft(stored({ evil: "<script>", userId: "someone" }));
+
+		expect(parsed).not.toBeNull();
+		expect(parsed).not.toHaveProperty("evil");
+		expect(parsed).not.toHaveProperty("userId");
+	});
+
+	it("drops unrecognized keys inside a party and a line item", () => {
+		const billFrom = { ...(stored().billFrom as object), evil: "x" };
+		const item = {
+			...(stored().lineItems as Record<string, unknown>[])[0],
+			evil: "x",
+		};
+		const parsed = parseDraft(stored({ billFrom, lineItems: [item] }));
+
+		expect(parsed?.billFrom).not.toHaveProperty("evil");
+		expect(parsed?.lineItems[0]).not.toHaveProperty("evil");
 	});
 });

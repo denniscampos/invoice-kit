@@ -1,4 +1,7 @@
-import { DEFAULT_TEMPLATE_ID } from "~/lib/invoice-templates";
+import {
+	DEFAULT_TEMPLATE_ID,
+	resolveTemplateId,
+} from "~/lib/invoice-templates";
 import { lineItemTotal } from "~/lib/money";
 import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
 
@@ -150,21 +153,121 @@ export function todaysDates(today: Date = new Date()) {
 	return { issueDate, dueDate: addDays(issueDate, DUE_DATE_OFFSET_DAYS) };
 }
 
-function isStoredDraft(value: unknown): value is InvoiceDraft {
-	if (typeof value !== "object" || value === null) return false;
+/* Everything below is the boundary between a draft this app wrote and one it
+   merely received. A draft arrives from sessionStorage today and from a posted
+   request body in feature 5, and neither can be trusted to hold what the type
+   says it holds.
 
-	const draft = value as Partial<InvoiceDraft>;
+   The rule is the same for both: a draft that does not check out is discarded,
+   never repaired. Merging defaults into a half-real invoice would hand the user
+   a document that looks complete and quietly is not, which is worse on an
+   invoice than showing them an empty editor. */
 
-	return (
-		draft.version === DRAFT_VERSION &&
-		typeof draft.issueDate === "string" &&
-		typeof draft.invoiceNumber === "string" &&
-		typeof draft.billFrom === "object" &&
-		draft.billFrom !== null &&
-		typeof draft.billTo === "object" &&
-		draft.billTo !== null &&
-		Array.isArray(draft.lineItems)
-	);
+const PARTY_FIELDS = [
+	"name",
+	"address",
+	"city",
+	"region",
+	"postalCode",
+	"country",
+	"email",
+	"phone",
+	"taxId",
+] as const;
+
+const isText = (value: unknown): value is string => typeof value === "string";
+
+// Rejects NaN and Infinity, which is the point: both survive a typeof check and
+// then render as "NaN" on the invoice.
+const isCount = (value: unknown): value is number =>
+	typeof value === "number" && Number.isFinite(value);
+
+// Money is integer minor units everywhere, so a fractional cent is corruption.
+const isMinorUnits = (value: unknown): value is number =>
+	typeof value === "number" && Number.isInteger(value);
+
+function parseParty(value: unknown): Party | null {
+	if (typeof value !== "object" || value === null) return null;
+
+	const source = value as Record<string, unknown>;
+	const party = {} as Party;
+
+	for (const field of PARTY_FIELDS) {
+		const text = source[field];
+		if (!isText(text)) return null;
+		party[field] = text;
+	}
+
+	return party;
+}
+
+function parseLineItem(value: unknown): LineItem | null {
+	if (typeof value !== "object" || value === null) return null;
+
+	const source = value as Record<string, unknown>;
+	const { id, name, description, position, quantity, rate, total } = source;
+
+	if (!isText(id) || !isText(name) || !isText(description)) return null;
+	if (!isMinorUnits(position) || !isCount(quantity)) return null;
+	if (!isMinorUnits(rate) || !isMinorUnits(total)) return null;
+
+	return { id, position, name, description, quantity, rate, total };
+}
+
+/* Takes unknown and never throws. Fields are copied across one by one rather
+   than the object being cast, so an unrecognized key on the input cannot ride
+   along into the app or into the PDF renderer. */
+export function parseDraft(value: unknown): InvoiceDraft | null {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		return null;
+	}
+
+	const source = value as Record<string, unknown>;
+	const {
+		version,
+		status,
+		invoiceNumber,
+		issueDate,
+		dueDate,
+		currency,
+		paymentTerms,
+		notes,
+	} = source;
+
+	if (version !== DRAFT_VERSION || status !== "draft") return null;
+	if (!isText(invoiceNumber) || !isText(currency)) return null;
+	if (!isText(issueDate) || !isText(dueDate)) return null;
+	if (!isText(paymentTerms) || !isText(notes)) return null;
+
+	const billFrom = parseParty(source.billFrom);
+	const billTo = parseParty(source.billTo);
+	if (!billFrom || !billTo) return null;
+
+	if (!Array.isArray(source.lineItems)) return null;
+	const lineItems: LineItem[] = [];
+	for (const item of source.lineItems) {
+		const parsed = parseLineItem(item);
+		if (!parsed) return null;
+		lineItems.push(parsed);
+	}
+
+	return {
+		version: DRAFT_VERSION,
+		invoiceNumber,
+		status: "draft",
+		/* The one field that is normalized rather than rejected, because the
+		   registry already answers for it: an id nothing renders becomes the
+		   default, which is what the document would have shown anyway. */
+		templateId: resolveTemplateId(source.templateId),
+		issueDate,
+		dueDate,
+		currency,
+		billFrom,
+		billTo,
+		paymentTerms,
+		notes,
+		lineItems,
+	};
 }
 
 /* Returns null rather than throwing for every failure mode: no draft stored,
@@ -176,8 +279,7 @@ export function readStoredDraft(): InvoiceDraft | null {
 		const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
 		if (!raw) return null;
 
-		const parsed: unknown = JSON.parse(raw);
-		return isStoredDraft(parsed) ? parsed : null;
+		return parseDraft(JSON.parse(raw));
 	} catch {
 		return null;
 	}

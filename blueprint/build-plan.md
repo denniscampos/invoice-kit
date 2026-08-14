@@ -68,6 +68,8 @@ cleaned-up checkbox version before generating the project overview.
 - [x] 3. **Live invoice preview** - show a minimal invoice template that updates as the form is filled out
 - [x] 4. **Template selection** - switch between simple invoice templates for the preview and final PDF
 - [ ] 5. **PDF generation** - generate and download PDF invoices from HTML templates using Cloudflare Browser Rendering/Puppeteer, with no account needed
+  - [x] 5a. **Print-ready invoice HTML** - the Worker validates a posted draft and returns it as one standalone, letter-sized HTML document with the styles inlined
+  - [ ] 5b. **PDF download** - Browser Rendering turns that document into a PDF, streamed to a Download button in the editor
 
 Items 1-5 are the whole free path: build an invoice and download it without
 signing up. Nothing is stored on the server yet. Everything below needs an

@@ -9,18 +9,16 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { FONT_ORIGINS, INTER_STYLESHEET_HREF } from "~/lib/fonts";
 
 export const links: Route.LinksFunction = () => [
-	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
+	{ rel: "preconnect", href: FONT_ORIGINS[0] },
 	{
 		rel: "preconnect",
-		href: "https://fonts.gstatic.com",
+		href: FONT_ORIGINS[1],
 		crossOrigin: "anonymous",
 	},
-	{
-		rel: "stylesheet",
-		href: "https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap",
-	},
+	{ rel: "stylesheet", href: INTER_STYLESHEET_HREF },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
