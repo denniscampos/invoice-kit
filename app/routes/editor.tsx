@@ -4,6 +4,7 @@ import { AppBar } from "~/components/AppBar";
 import { InvoiceDetailsFields } from "~/components/invoice/InvoiceDetailsFields";
 import { LineItemsCard } from "~/components/invoice/LineItemsCard";
 import { PartyFields } from "~/components/invoice/PartyFields";
+import { PreviewPane } from "~/components/invoice/PreviewPane";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Textarea } from "~/components/ui/textarea";
 import {
@@ -99,8 +100,9 @@ export default function Editor() {
 					</Card>
 				</div>
 
-				{/* Reserved for the live preview (feature 3). */}
-				<div className="editor:sticky editor:top-20 h-[560px] rounded-xl border bg-card" />
+				<div className="editor:sticky editor:top-20">
+					<PreviewPane draft={draft} />
+				</div>
 			</main>
 		</>
 	);

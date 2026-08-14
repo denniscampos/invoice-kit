@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+	currencySymbol,
 	formatMinorUnits,
+	formatMoney,
 	lineItemTotal,
 	parseMoneyInput,
 	parseQuantity,
@@ -170,5 +172,47 @@ describe("formatMinorUnits", () => {
 			expect(minor).not.toBeNull();
 			expect(parseMoneyInput(formatMinorUnits(minor as number))).toBe(minor);
 		}
+	});
+});
+
+describe("currencySymbol", () => {
+	it("resolves the symbol for the currencies in the picker", () => {
+		expect(currencySymbol("USD")).toBe("$");
+		expect(currencySymbol("EUR")).toBe("€");
+		expect(currencySymbol("GBP")).toBe("£");
+	});
+
+	/* CAD and AUD share the dollar sign with USD in en-US, disambiguated by a
+	   prefix. Whatever Intl returns is what the document shows, so this asserts
+	   the shape rather than a hand-picked string. */
+	it("returns something dollar-ish for the other dollar currencies", () => {
+		expect(currencySymbol("CAD")).toContain("$");
+		expect(currencySymbol("AUD")).toContain("$");
+	});
+
+	it("falls back to the code itself rather than throwing", () => {
+		expect(currencySymbol("XYZ")).toBe("XYZ");
+		expect(currencySymbol("not a currency")).toBe("not a currency");
+		expect(currencySymbol("")).toBe("");
+	});
+});
+
+describe("formatMoney", () => {
+	it("puts the symbol in front of the exact digits", () => {
+		expect(formatMoney(868000, "USD")).toBe("$8,680.00");
+		expect(formatMoney(0, "USD")).toBe("$0.00");
+		expect(formatMoney(1, "USD")).toBe("$0.01");
+	});
+
+	it("follows the currency", () => {
+		expect(formatMoney(1250, "EUR")).toBe("€12.50");
+		expect(formatMoney(1250, "GBP")).toBe("£12.50");
+		expect(formatMoney(1250, "XYZ")).toBe("XYZ12.50");
+	});
+
+	/* The digits come from formatMinorUnits, not from dividing by 100 and
+	   handing the float to Intl. */
+	it("keeps the exact minor units", () => {
+		expect(formatMoney(123456789, "USD")).toBe("$1,234,567.89");
 	});
 });

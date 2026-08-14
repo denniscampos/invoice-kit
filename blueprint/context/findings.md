@@ -118,21 +118,6 @@ numeric fields per item and drop the stored draft when they do not hold, rather
 than merging defaults into a half-real invoice.
 **Resolution:**
 
-### F-13 [P3] open - The amount and total columns show no currency
-
-**File:** app/components/invoice/LineItemsCard.tsx:99
-**Found:** 2026-08-14 by /audit (scope: current)
-**Why it matters:** The mockup's total line reads `$8,680.00`; the built card
-reads `8,680.00`. The invoice carries a currency the user can change in the field
-directly above, and nothing on the card reflects it, so a EUR invoice and a USD
-invoice look identical. Cosmetic today because feature 3's preview will show the
-currency, which is why this is P3 rather than a contract problem.
-**Suggested fix:** render the currency code beside the total (`USD 8,680.00`)
-rather than a symbol, since the symbol table is exactly the per-currency
-knowledge `money.ts` deliberately does not carry yet. Decide it with feature 3 so
-the card and the preview agree.
-**Resolution:**
-
 ### F-15 [P3] open - A European thousands dot reads as a decimal point
 
 **File:** app/lib/money.ts:16
@@ -155,4 +140,26 @@ same helper, so this limitation now applies to the quantity column as well as
 the rate. That is the right trade, since the two fields agreeing matters more
 than either one guessing differently, but it widens what a locale setting would
 have to fix.
+**Resolution:**
+
+### F-18 [P3] open - A very wide amount overflows its fixed column into the page margin
+
+**File:** app/components/invoice/InvoiceTemplate.tsx:61
+**Found:** 2026-08-14 by /audit (scope: current)
+**Why it matters:** The F-16 repair gave the numeric columns fixed widths
+(`w-16`, `w-24`, `w-28`), which is what stops a long word widening the document.
+The trade is that a number too wide for its column no longer widens it either: it
+overflows. Reproduced at 99999 x 999999.99, where the amount `€99,998,999,000.01`
+needs 142px in a 112px cell and its text runs 30px past the column, eating into
+the paper's right margin. Nothing is clipped or hidden today and the document
+does not stretch, so this is cosmetic at the preview stage, but feature 5 renders
+this same component to a fixed page where the margin is real.
+Ten-figure invoices are not the realistic trigger. Widening the currency picker
+is: 20,000,000 IDR or VND is an ordinary amount, and those codes plus grouping
+reach the same width at everyday values.
+**Suggested fix:** leave it until feature 22 widens the currency list, then size
+the amount column from the currency rather than a constant, or let the numeric
+cells wrap when they must (dropping `whitespace-nowrap` on the amount column
+only). Both are cheap; neither is worth doing while the picker holds five
+similar currencies.
 **Resolution:**

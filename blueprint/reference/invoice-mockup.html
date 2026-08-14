@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Invoice Kit - Invoice document</title>
+		<link
+			rel="stylesheet"
+			href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400..700&display=swap"
+		/>
+		<link rel="stylesheet" href="theme.css" />
+		<style>
+			/* This is the page Browser Rendering turns into the PDF. It is sized to
+			   US Letter at 96dpi (816 x 1056) so the on-screen proof matches print. */
+			.stage {
+				padding: var(--space-6) var(--space-5);
+				display: grid;
+				justify-items: center;
+				gap: var(--space-4);
+			}
+
+			.stage-label {
+				font-size: var(--text-xs);
+				color: var(--muted);
+				display: flex;
+				gap: var(--space-4);
+				align-items: center;
+			}
+
+			.page {
+				width: 816px;
+				min-height: 1056px;
+				background: var(--paper);
+				box-shadow: var(--shadow-md);
+				border-radius: 2px;
+			}
+
+			.page .paper {
+				padding: 64px 68px;
+				min-height: 1056px;
+				grid-template-rows: auto auto auto auto 1fr;
+			}
+
+			.page .paper-foot {
+				align-self: end;
+			}
+
+			.page .paper-title {
+				font-size: 32px;
+			}
+
+			@media print {
+				@page {
+					size: letter;
+					margin: 0;
+				}
+
+				body {
+					background: var(--paper);
+				}
+
+				.stage {
+					padding: 0;
+				}
+
+				.stage-label {
+					display: none;
+				}
+
+				.page {
+					box-shadow: none;
+					width: auto;
+					border-radius: 0;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<div class="stage">
+			<div class="stage-label">
+				<span>US Letter, 816 &times; 1056 at 96dpi</span>
+				<span>&middot;</span>
+				<span>Template: Minimal</span>
+				<span>&middot;</span>
+				<span>Print this page to proof the PDF</span>
+			</div>
+
+			<div class="page">
+				<article class="paper">
+					<header class="paper-head">
+						<div>
+							<div class="paper-logo">A</div>
+							<h1 class="paper-title">Invoice</h1>
+							<div class="num" style="color: var(--paper-muted)">INV-0007</div>
+						</div>
+						<div class="paper-meta num">
+							<div>Issued <strong>13 Aug 2026</strong></div>
+							<div>Due <strong>12 Sep 2026</strong></div>
+							<div>Terms <strong>Net 30</strong></div>
+						</div>
+					</header>
+
+					<section class="paper-parties">
+						<div>
+							<h3>From</h3>
+							<address>
+								<b>Acme Studio</b>
+								118 Fremont Street<br />
+								San Francisco, CA 94105<br />
+								United States<br />
+								billing@acmestudio.co<br />
+								<span class="num">+1 415 555 0142</span><br />
+								<span class="num">EIN 84-2910773</span>
+							</address>
+						</div>
+						<div>
+							<h3>Bill to</h3>
+							<address>
+								<b>Northwind Ltd</b>
+								42 Bishopsgate<br />
+								London, Greater London EC2N 4AH<br />
+								United Kingdom<br />
+								accounts@northwind.co.uk<br />
+								<span class="num">+44 20 7946 0812</span><br />
+								<span class="num">VAT GB 412 9938 27</span>
+							</address>
+						</div>
+					</section>
+
+					<table class="items">
+						<thead>
+							<tr>
+								<th>Description</th>
+								<th class="r">Qty</th>
+								<th class="r">Rate</th>
+								<th class="r">Amount</th>
+							</tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>
+									Brand identity system
+									<div class="desc">
+										Logo suite, type scale, color system, usage guide
+									</div>
+								</td>
+								<td class="r num">18</td>
+								<td class="r num">$145.00</td>
+								<td class="r num">$2,610.00</td>
+							</tr>
+							<tr>
+								<td>
+									Marketing site design
+									<div class="desc">
+										Home, pricing, about, and two template pages
+									</div>
+								</td>
+								<td class="r num">24</td>
+								<td class="r num">$145.00</td>
+								<td class="r num">$3,480.00</td>
+							</tr>
+							<tr>
+								<td>
+									Design system components
+									<div class="desc">
+										Buttons, forms, tables, and navigation in Figma
+									</div>
+								</td>
+								<td class="r num">12</td>
+								<td class="r num">$145.00</td>
+								<td class="r num">$1,740.00</td>
+							</tr>
+							<tr>
+								<td>
+									Launch asset pack
+									<div class="desc">Social, email header, and press kit</div>
+								</td>
+								<td class="r num">1</td>
+								<td class="r num">$850.00</td>
+								<td class="r num">$850.00</td>
+							</tr>
+						</tbody>
+					</table>
+
+					<div class="totals num">
+						<div><span>Subtotal</span><span>$8,680.00</span></div>
+						<div class="grand"><span>Total due</span><span>$8,680.00 USD</span></div>
+					</div>
+
+					<footer class="paper-foot">
+						<div>
+							<h3>Payment terms</h3>
+							<p>
+								Net 30<br />
+								Bank transfer to Acme Studio<br />
+								<span class="num">Routing 121000248 &middot; Account 4471902233</span>
+							</p>
+						</div>
+						<div>
+							<h3>Notes</h3>
+							<p>
+								Payment by bank transfer. Late payments accrue 1.5% monthly
+								interest after 30 days. Thank you for your business.
+							</p>
+						</div>
+					</footer>
+				</article>
+			</div>
+		</div>
+	</body>
+</html>

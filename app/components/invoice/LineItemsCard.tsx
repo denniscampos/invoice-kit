@@ -23,7 +23,7 @@ import {
 	reorderLineItems,
 	updateLineItem,
 } from "~/lib/invoice-draft";
-import { formatMinorUnits } from "~/lib/money";
+import { formatMoney } from "~/lib/money";
 import type { InvoiceDraft, LineItem } from "~/types/invoice";
 
 /* Column widths come from the mockup's .items-head / .item-row grid. The header
@@ -109,6 +109,7 @@ export function LineItemsCard({ draft, onChange }: LineItemsCardProps) {
 											key={item.id}
 											item={item}
 											index={index}
+											currency={draft.currency}
 											className={GRID}
 											onPatch={(patch) =>
 												setItems(updateLineItem(draft, item.id, patch))
@@ -123,7 +124,7 @@ export function LineItemsCard({ draft, onChange }: LineItemsCardProps) {
 						<div className="flex justify-end gap-5 border-t pt-3 font-medium">
 							<span className="font-normal text-muted-foreground">Total</span>
 							<span className="pr-2 tabular-nums">
-								{formatMinorUnits(invoiceSubtotal(draft))}
+								{formatMoney(invoiceSubtotal(draft), draft.currency)}
 							</span>
 						</div>
 					</>

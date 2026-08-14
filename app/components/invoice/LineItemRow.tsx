@@ -4,12 +4,18 @@ import { GripVertical } from "lucide-react";
 import { useState } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
-import { formatMinorUnits, parseMoneyInput, parseQuantity } from "~/lib/money";
+import {
+	formatMinorUnits,
+	formatMoney,
+	parseMoneyInput,
+	parseQuantity,
+} from "~/lib/money";
 import type { LineItem } from "~/types/invoice";
 
 type LineItemRowProps = {
 	item: LineItem;
 	index: number;
+	currency: string;
 	className: string;
 	onPatch: (patch: Partial<Omit<LineItem, "id" | "position" | "total">>) => void;
 	onRemove: () => void;
@@ -18,6 +24,7 @@ type LineItemRowProps = {
 export function LineItemRow({
 	item,
 	index,
+	currency,
 	className,
 	onPatch,
 	onRemove,
@@ -93,8 +100,10 @@ export function LineItemRow({
 				value={rateText}
 				onChange={(event) => handleRate(event.target.value)}
 			/>
+			{/* The amount carries the currency, the rate input does not: a symbol
+			    inside a field the user types into is noise they have to edit around. */}
 			<div className="pr-2 text-right font-medium tabular-nums">
-				{formatMinorUnits(item.total)}
+				{formatMoney(item.total, currency)}
 			</div>
 			<Button
 				type="button"

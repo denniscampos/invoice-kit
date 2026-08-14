@@ -99,6 +99,30 @@ export function lineItemTotal(quantity: number, rate: number): number {
 	return Number.isSafeInteger(total) ? total : 0;
 }
 
+/* The symbol for a currency code, from Intl rather than a hand-written table
+   that would go stale and never cover every code the app might see. Intl throws
+   on a malformed code and returns the code itself for a well-formed unknown one,
+   so both degrade to "USD 8,680.00" instead of breaking the document. */
+export function currencySymbol(code: string): string {
+	try {
+		const parts = new Intl.NumberFormat("en-US", {
+			style: "currency",
+			currency: code,
+		}).formatToParts(0);
+
+		return parts.find((part) => part.type === "currency")?.value ?? code;
+	} catch {
+		return code;
+	}
+}
+
+/* Money for display. The digits come from formatMinorUnits rather than Intl, so
+   the integer minor units are never routed through a division that could round
+   them; Intl is used only for the symbol. */
+export function formatMoney(minor: number, currency: string): string {
+	return `${currencySymbol(currency)}${formatMinorUnits(minor)}`;
+}
+
 /* Minor units to a display string: 125000 becomes "1,250.00". No currency
    symbol, because the invoice carries the currency and the column header or the
    total line is where it belongs. */
