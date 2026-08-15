@@ -84,7 +84,7 @@ account.
 - [ ] 12. **Delete and void** - delete a draft invoice, or void a sent one while keeping the record
 - [ ] 13. **Logo upload** - upload and attach a logo to an invoice using R2 storage
 - [ ] 14. **Previous invoice upload** - upload and store invoice files that were created outside the app
-- [ ] 15. **Anonymous abuse protection** - rate limit the account-free PDF endpoint so Browser Rendering cannot be run up by strangers
+- [x] 15. **Anonymous abuse protection** - rate limit the account-free PDF endpoint so Browser Rendering cannot be run up by strangers
 - [ ] 16. **Local and self-hosted setup** - documented clone-to-running path against user-owned D1 and R2
 - [ ] 17. **Deployment readiness** - configure Cloudflare deployment with D1, R2, and PDF generation bindings verified
 

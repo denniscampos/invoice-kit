@@ -207,3 +207,96 @@ that refuses to render with empty styles is the smaller version and still beats
 silence.
 
 **Resolution:**
+
+### F-30 [P2] fixed - The deployed render endpoint has no throttle in front of it
+
+**File:** app/routes/invoice.pdf.tsx:56
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** `POST /invoice/pdf` is live at the public URL and reaches
+Browser Rendering with no per-caller limit. On the Workers Free plan the account
+gets ten minutes of browser time a day and one new browser every twenty seconds,
+and a render costs three to four seconds, so roughly a hundred and fifty requests
+exhaust the day for everyone. The guards in front of the call are all about the
+shape of the request, not how often it arrives: a valid draft posted in a loop is
+refused by nothing. `project-overview.md` names this as a deploy blocker in as
+many words.
+
+Deployed knowingly: the user chose to stay on the free tier with rate limiting as
+the guard rail, and then asked for the deploy before that work landed. This entry
+exists so the exposure is recorded rather than living only in the roadmap.
+**Suggested fix:** feature 15, which is the next build-plan item. Cloudflare's
+rate limiting binding keyed on client IP is the smallest version; a 429 with
+`Retry-After` matches what the endpoint already returns for exhausted quota, and
+the Download button already renders that message.
+
+**Resolution:** Repaired in part 2026-08-15 by /implement, feature 15. Two rate
+limiters now sit in front of the render endpoint: `PDF_LIMITER` at two requests a
+minute per caller, keyed on `CF-Connecting-IP`, and `PDF_GLOBAL_LIMITER` at five
+a minute across everyone. The check runs after the method test and before the
+body is read, so a flood is refused at the door, and it answers 429 with
+`Retry-After: 60` and a sentence the Download button already displays.
+
+Verified against the running Worker: a third post inside a minute from one caller
+is refused with 429 while a different caller still succeeds; spoofing
+`X-Forwarded-For` on every request does not earn a fresh allowance, which is the
+mistake this would most easily have made; a request with no `CF-Connecting-IP`
+shares one strict bucket rather than skipping the check; and zero renders were
+attempted across the whole throttle test, so nothing reached Browser Rendering.
+The limits were then tuned down from 5 and 20 because evidence showed the
+original numbers sat above the platform's own ceiling and so never fired first.
+
+**In part**, deliberately. Two gaps remain and neither is closed by this work:
+
+1. The binding's window is only 10 or 60 seconds, so this is a burst guard, not a
+   daily budget. A slow drip from many addresses could still exhaust the ten
+   minutes of browser time a day without tripping any window. Closing that needs
+   a counter that survives a day, which means KV or a Durable Object, and that is
+   a storage decision worth taking on its own.
+2. Cloudflare starts one browser every twenty seconds, which is a spacing rule a
+   fixed window cannot express, so two clicks a few seconds apart can still meet
+   a 503 from the quota rather than our 429. A short client side cooldown on the
+   Download button would close it.
+
+Leaving this `fixed` rather than closed is the point: an /audit pass should look
+at the remaining exposure and decide whether it deserves its own entry.
+
+### F-31 [P3] open - The download's object URL is revoked in the same tick as the click
+
+**File:** app/components/invoice/DownloadPdfButton.tsx:32
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** `saveBlob` creates an object URL, clicks a detached anchor,
+and revokes the URL on the next line. Chromium starts the download synchronously
+inside `click()`, so this works, and it was verified working in Chromium: a real
+click produced `INV-0001.pdf` at 92KB. The pattern is known to be fragile
+elsewhere, because revoking is what tells the browser the blob can go, and a
+browser that begins the transfer after the current task can find the URL already
+dead. The anchor also never enters the document, which older Firefox required.
+Neither was tested outside Chromium, so this is a portability risk on the app's
+one output, not an observed break.
+**Suggested fix:** revoke on a later turn rather than immediately, and append the
+anchor before clicking and remove it after. Both are one line and neither costs
+anything in the browser where it already works.
+
+**Resolution:**
+
+### F-32 [P3] open - Classic's serif is a different face in the PDF than in the preview
+
+**File:** app/components/invoice/templates/ClassicTemplate.tsx:27
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** Classic asks for `ui-serif, Georgia, "Times New Roman",
+serif`, deliberately a system stack so the document needs no webfont. The
+headless browser that renders the PDF runs on Linux, where none of those exist,
+so it resolves to Liberation Serif: confirmed by reading the font table of a
+rendered file, which embeds LiberationSerif and LiberationSerif-Bold alongside
+Inter. The result is a perfectly respectable Times-like invoice, but a user on a
+macOS browser approves a preview set in Georgia and downloads a file set in
+something else, which is a dent in the "what you see is what downloads" promise
+the preview exists to make. Minimal and Compact are unaffected, because Inter is
+a webfont and loads in both places.
+**Suggested fix:** either accept it and say so in the Classic template's comment,
+so the next person does not treat it as a bug, or give Classic a webfont serif
+the way the app already treats Inter, at the cost of a second font request in the
+document feature 5a deliberately keeps light. Worth deciding with feature 13,
+which is the next time the document's assets are opened.
+
+**Resolution:**

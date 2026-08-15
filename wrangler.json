@@ -16,6 +16,30 @@
 		"binding": "BROWSER",
 		"remote": true
 	},
+	/* The throttle in front of the render endpoint, which is the only
+	   unauthenticated route that reaches Browser Rendering. Two of them on
+	   purpose: the first keeps one caller from looping, the second keeps a crowd
+	   from spending the account's daily browser allowance between them. The
+	   window can only be 10 or 60 seconds, so this is a burst guard and not a
+	   daily budget.
+
+	   The numbers sit deliberately below the platform's own: the free tier starts
+	   one browser every twenty seconds, about three renders a minute, and a limit
+	   looser than that never fires first. Being refused here with a 429 that says
+	   to wait a minute beats being refused by Cloudflare with a 503 that sounds
+	   like the service is broken. */
+	"ratelimits": [
+		{
+			"name": "PDF_LIMITER",
+			"namespace_id": "1001",
+			"simple": { "limit": 2, "period": 60 }
+		},
+		{
+			"name": "PDF_GLOBAL_LIMITER",
+			"namespace_id": "1002",
+			"simple": { "limit": 5, "period": 60 }
+		}
+	],
 	"upload_source_maps": true,
 	"vars": {
 		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"

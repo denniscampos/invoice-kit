@@ -45,3 +45,18 @@ export async function readBoundedText(
 	   split across two chunks, and decoding each alone would corrupt it. */
 	return new TextDecoder().decode(bytes);
 }
+
+/* One bucket for callers we cannot tell apart. Sharing is the strict choice:
+   an unidentified caller gets less allowance, never a free pass. */
+const SHARED_CALLER_KEY = "unidentified";
+
+/* Who to throttle. `CF-Connecting-IP` is set by Cloudflare itself, so it is the
+   only header here worth believing: `X-Forwarded-For` arrives from the caller,
+   who would happily write a new value on every request and collect a fresh
+   allowance each time.
+
+   The address is used as a bucket key and nothing else. It is never logged and
+   never stored, which is the whole of this app's relationship with it. */
+export function rateLimitKey(request: Request): string {
+	return request.headers.get("cf-connecting-ip")?.trim() || SHARED_CALLER_KEY;
+}

@@ -7,7 +7,7 @@ import {
 	MAX_DRAFT_BYTES,
 	pdfFilename,
 } from "~/lib/print-document.server";
-import { readBoundedText } from "~/lib/request.server";
+import { rateLimitKey, readBoundedText } from "~/lib/request.server";
 
 /* The account free render endpoint. It takes an invoice draft as JSON and
    returns the document to print. Feature 5b keeps this route, its guards, and
@@ -37,6 +37,25 @@ const methodNotAllowed = () =>
    the shortest honest thing to tell someone to wait. */
 const BROWSER_RETRY_AFTER_SECONDS = 20;
 
+// The throttle's window, so the number the caller is told matches the config.
+const THROTTLE_RETRY_AFTER_SECONDS = 60;
+
+/* The shared bucket's key. A constant, because the point of the second limiter
+   is that everyone lands in the same one. */
+const GLOBAL_KEY = "invoice-pdf";
+
+/* Two questions, asked in order: is this caller going too fast, and is everyone
+   together going too fast. The second is only asked when the first passes, so a
+   caller who is already being turned away does not also spend the allowance the
+   rest of the world is sharing. */
+async function isThrottled(env: Env, request: Request): Promise<boolean> {
+	const caller = await env.PDF_LIMITER.limit({ key: rateLimitKey(request) });
+	if (!caller.success) return true;
+
+	const everyone = await env.PDF_GLOBAL_LIMITER.limit({ key: GLOBAL_KEY });
+	return !everyone.success;
+}
+
 /* Cloudflare reports an exhausted browser quota as a 429 inside the launch
    error's message. Matching on text is not something to be proud of, but the
    error carries no code to read, and the alternative is telling a user their
@@ -53,6 +72,19 @@ export function loader() {
 
 export async function action({ request, context }: Route.ActionArgs) {
 	if (request.method !== "POST") return methodNotAllowed();
+
+	const { env } = context.get(cloudflareContext);
+
+	/* Before the body is read, let alone rendered: a caller sending floods of
+	   large payloads should be turned away at the door rather than after being
+	   measured. Rendering is what this protects, but reading is not free either. */
+	if (await isThrottled(env, request)) {
+		return fail(
+			429,
+			"Too many invoice downloads from here. Try again in a minute.",
+			{ "retry-after": String(THROTTLE_RETRY_AFTER_SECONDS) },
+		);
+	}
 
 	/* The declared length is a cheap first refusal, and it is not trusted: a
 	   request can understate or omit it, so the real bytes are measured below. */
@@ -82,7 +114,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 	const draft = parseDraft(payload);
 	if (!draft) return fail(400, "That is not a valid invoice draft.");
 
-	const { env } = context.get(cloudflareContext);
 	let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
 
 	try {

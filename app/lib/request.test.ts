@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readBoundedText } from "./request.server";
+import { rateLimitKey, readBoundedText } from "./request.server";
 
 const post = (body: BodyInit | null) =>
 	new Request("https://example.test/invoice/pdf", { method: "POST", body });
@@ -83,5 +83,52 @@ describe("readBoundedText", () => {
 		expect(await readBoundedText(request, 4096)).toBeNull();
 		// Five chunks to pass 4KB, not the fifty the body was willing to send.
 		expect(chunksPulled).toBeLessThan(10);
+	});
+});
+
+describe("rateLimitKey", () => {
+	const withHeaders = (headers: Record<string, string>) =>
+		new Request("https://example.test/invoice/pdf", { method: "POST", headers });
+
+	it("buckets by the address Cloudflare reports", () => {
+		expect(rateLimitKey(withHeaders({ "cf-connecting-ip": "203.0.113.7" }))).toBe(
+			"203.0.113.7",
+		);
+	});
+
+	/* The header the caller controls. Trusting it would hand every request its
+	   own allowance, which is the same as having no limit at all. */
+	it("ignores X-Forwarded-For", () => {
+		const key = rateLimitKey(
+			withHeaders({
+				"cf-connecting-ip": "203.0.113.7",
+				"x-forwarded-for": "198.51.100.1",
+			}),
+		);
+
+		expect(key).toBe("203.0.113.7");
+	});
+
+	it("does not fall back to a caller-supplied header", () => {
+		const key = rateLimitKey(withHeaders({ "x-forwarded-for": "198.51.100.1" }));
+
+		expect(key).not.toBe("198.51.100.1");
+	});
+
+	/* An unidentified caller shares one bucket rather than skipping the check,
+	   so the unknown case throttles harder rather than not at all. */
+	it.each([
+		["a missing header", {}],
+		["an empty header", { "cf-connecting-ip": "" }],
+		["a whitespace header", { "cf-connecting-ip": "   " }],
+	])("shares a single bucket for %s", (_label, headers) => {
+		expect(rateLimitKey(withHeaders(headers))).toBe("unidentified");
+	});
+
+	it("gives two different callers two different buckets", () => {
+		const a = rateLimitKey(withHeaders({ "cf-connecting-ip": "203.0.113.7" }));
+		const b = rateLimitKey(withHeaders({ "cf-connecting-ip": "203.0.113.8" }));
+
+		expect(a).not.toBe(b);
 	});
 });
