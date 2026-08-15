@@ -7,7 +7,7 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-02 [P2] fixed - Ported theme tokens duplicate shadcn tokens with the same values
+### F-02 [P2] closed - Ported theme tokens duplicate shadcn tokens with the same values
 
 **File:** app/app.css:20
 **Why it matters:** `--color-surface` (#ffffff), `--color-surface-sunken`
@@ -29,7 +29,12 @@ comment that records the removal, and the compiled stylesheet no longer contains
 them. The running app is unchanged: app bar white, page `rgb(246,247,249)`,
 preview sunken `rgb(240,242,245)`, paper white.
 
-### F-04 [P3] fixed - Unused exports in the draft module
+Re-reviewed 2026-08-15 by /audit (scope: full). The four duplicates are gone from
+the source and from the compiled stylesheet, `--color-faint` remains as this
+entry intended, and the only textual matches left are inside the comment that
+records the removal. The running app's colours are unchanged. **Closed.**
+
+### F-04 [P3] closed - Unused exports in the draft module
 
 **File:** app/lib/invoice-draft.ts:3
 **Found:** 2026-08-13 by /audit (scope: current)
@@ -56,7 +61,12 @@ judgment call, same fix. Updated again the same day: the F-20 repair gave
 `PartyAddressLine` a real importer in `CompactTemplate.tsx`, so it leaves this
 list too. The original six from feature 1 and 2 are what remain.
 
-### F-06 [P3] fixed - CSS-only packages sit in runtime dependencies
+Re-reviewed 2026-08-15 by /audit (scope: full). The five are no longer exported
+and `toIsoDate` keeps its export with a comment explaining that its tests are the
+reason. Nothing outside the module referenced any of them, and the suite is
+green. **Closed.**
+
+### F-06 [P3] closed - CSS-only packages sit in runtime dependencies
 
 **File:** package.json:17
 **Found:** 2026-08-13 by /audit (scope: current)
@@ -71,6 +81,11 @@ already treated, then confirm `pnpm build` still passes.
 `devDependencies`. The proof is the build: they are reached only through `@import`
 in `app.css`, so `pnpm build` passing afterwards is what shows they were build
 time only. Runtime `dependencies` is now fourteen packages with neither in it.
+
+Re-reviewed 2026-08-15 by /audit (scope: full). Both packages are in
+`devDependencies`, runtime `dependencies` no longer lists either, and `pnpm build`
+passes, which is the evidence that matters for packages reached only through an
+`@import`. **Closed.**
 
 ### F-08 [P3] open - Clearing the issue date wipes a due date typed to exactly the default
 
@@ -155,7 +170,7 @@ only). Both are cheap; neither is worth doing while the picker holds five
 similar currencies.
 **Resolution:**
 
-### F-19 [P2] fixed - The editor scrolls sideways on a phone-width screen
+### F-19 [P2] closed - The editor scrolls sideways on a phone-width screen
 
 **File:** app/routes/editor.tsx:70
 **Found:** 2026-08-14 by /audit (scope: current)
@@ -191,6 +206,14 @@ input labelled. Verified at 1440px: fields still on one row at their original 78
 and 110 pixel widths, header row visible, per row labels hidden (six present,
 none visible).
 
+Re-reviewed 2026-08-15 by /audit (scope: full). Both causes are addressed and the
+criterion this entry set, no sideways scroll at 360px, is met: document scroll
+width equals client width, the stacked row is usable with every field labelled,
+and the 1440px layout is unchanged with the fields on one row at their original
+widths. Reviewing the repair turned up a smaller residual at 320px, which is the
+app bar rather than either element named here; it has its own entry as F-35.
+**Closed.**
+
 ### F-23 [P3] open - The three templates each keep their own copy of the document's rules
 
 **File:** app/components/invoice/templates/CompactTemplate.tsx:1
@@ -214,7 +237,7 @@ separate templates.
 
 **Resolution:**
 
-### F-27 [P3] fixed - An unstyled print document would ship silently
+### F-27 [P3] closed - An unstyled print document would ship silently
 
 **File:** app/lib/print-styles.ts:11
 **Found:** 2026-08-14 by /audit (scope: full)
@@ -240,7 +263,14 @@ log. Two tests cover it, empty and whitespace, and a real render still returns
 89KB of PDF, which is what proves the guard does not fire on the real
 stylesheet.
 
-### F-31 [P3] fixed - The download's object URL is revoked in the same tick as the click
+Re-reviewed 2026-08-15 by /audit (scope: full). `buildPrintDocument` throws on an
+empty or whitespace stylesheet, two tests cover it, and the only production call
+site sits inside the route's try, so the throw becomes the existing 502 with the
+reason logged rather than an unhandled error. A real render still returns 89KB of
+PDF, which is what shows the guard does not fire on the real stylesheet.
+**Closed.**
+
+### F-31 [P3] closed - The download's object URL is revoked in the same tick as the click
 
 **File:** app/components/invoice/DownloadPdfButton.tsx:32
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -266,7 +296,12 @@ next reader: `document.body.append` does not typecheck in this project because
 the Workers runtime types contribute a competing `append`; `appendChild` is
 unambiguous.
 
-### F-32 [P3] fixed - Classic's serif is a different face in the PDF than in the preview
+Re-reviewed 2026-08-15 by /audit (scope: full). The anchor is appended, clicked,
+and removed, and the revoke runs on a later task. Verified independently in the
+browser: a click downloaded the file and afterwards `a[download]` matched zero
+elements, so nothing is orphaned in the DOM. **Closed.**
+
+### F-32 [P3] closed - Classic's serif is a different face in the PDF than in the preview
 
 **File:** app/components/invoice/templates/ClassicTemplate.tsx:27
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -296,6 +331,15 @@ bug. The behaviour is unchanged, so this is documentation rather than repair, an
 an /audit pass should decide whether that satisfies the finding or whether the
 webfont is wanted.
 
+Re-reviewed 2026-08-15 by /audit (scope: full). Closed on the first of the two
+paths this entry offered, accept and record, rather than by changing behaviour:
+the comment beside Classic's face now states that the system stack is deliberate,
+that the PDF comes back in Liberation Serif while a macOS preview shows Georgia,
+that the layout is identical, and that closing the gap costs a webfont request on
+every render. The difference between preview and PDF still exists and is now a
+documented decision rather than an unexplained one. **Closed.** If matching faces
+are wanted, that is new work and deserves a new entry rather than reopening this.
+
 ### F-33 [P2] open - The throttle cannot protect the daily browser quota
 
 **File:** wrangler.json:19
@@ -321,7 +365,7 @@ rather than bolting on. Until then the honest description of the protection is
 
 **Resolution:**
 
-### F-34 [P3] fixed - A rate limiter failure becomes an unexplained 500
+### F-34 [P3] closed - A rate limiter failure becomes an unexplained 500
 
 **File:** app/routes/invoice.pdf.tsx:81
 
@@ -348,3 +392,27 @@ because waving traffic through hands the account's daily browser allowance to
 whatever just broke, and that allowance cannot be refilled before tomorrow.
 Verified the ordinary paths still work: a real download returns a PDF and the
 throttle still answers 429 on the third request in a minute.
+
+Re-reviewed 2026-08-15 by /audit (scope: full). Read the repair: both `limit()`
+calls are inside the try, the failure is logged with the same shape as the render
+failure, and the 503 carries `Retry-After`. The fail closed choice is stated in a
+comment with its reasoning, so the decision is no longer implicit. Ordinary paths
+re-verified: a real download returns a PDF and the throttle still answers 429.
+**Closed.**
+
+### F-35 [P3] open - The app bar does not fit a 320px screen
+
+**File:** app/components/AppBar.tsx:3
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** Found while re-reviewing F-19. The bar is a single flex row
+with no wrapping: the logo, the product name, the Editor pill, and the 112px
+Download PDF button come to 335px of content inside 305px of available width at a
+320px viewport, so the page scrolls sideways again at that size. At 360px it fits
+only because the product name wraps onto two lines. 320px is an old phone rather
+than a common one, which is why this is P3 and not a repeat of F-19, and the
+preview paper's own overflow is not involved: that scrolls inside its frame as
+designed.
+**Suggested fix:** let the bar wrap, or drop the Editor pill below `sm`, where it
+is the least useful of the four things competing for the row. Both are one class.
+
+**Resolution:**
