@@ -7,6 +7,10 @@ import {
 	MAX_DRAFT_BYTES,
 	pdfFilename,
 } from "~/lib/print-document.server";
+import {
+	consumeRenderQuota,
+	secondsUntilNextDay,
+} from "~/lib/render-quota.server";
 import { rateLimitKey, readBoundedText } from "~/lib/request.server";
 
 /* The account free render endpoint. It takes an invoice draft as JSON and
@@ -125,6 +129,33 @@ export async function action({ request, context }: Route.ActionArgs) {
 	   repaired into something printable. */
 	const draft = parseDraft(payload);
 	if (!draft) return fail(400, "That is not a valid invoice draft.");
+
+	/* Last guard before the expensive call, and last on purpose: the day's
+	   capacity is spent only by a request that was going to be rendered, so a
+	   malformed body or a throttled caller never costs anyone a slot. */
+	let quota;
+	try {
+		quota = await consumeRenderQuota(env.DB);
+	} catch (error) {
+		console.error("Render quota unavailable", error);
+
+		/* Fail closed, the same call the rate limiter makes and for the same
+		   reason: an allowance that cannot be refilled until tomorrow is not one
+		   to hand out while the counter is blind. */
+		return fail(503, "Downloads are briefly unavailable. Try again shortly.", {
+			"retry-after": String(THROTTLE_RETRY_AFTER_SECONDS),
+		});
+	}
+
+	if (!quota.allowed) {
+		/* Tomorrow, not in a minute. This is the daily allowance, and telling
+		   someone to retry shortly would send them back into the same wall. */
+		return fail(
+			503,
+			"Invoice downloads have reached today's limit. Please try again tomorrow.",
+			{ "retry-after": String(secondsUntilNextDay()) },
+		);
+	}
 
 	let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
 

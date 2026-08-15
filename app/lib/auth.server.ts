@@ -20,6 +20,19 @@ export function createAuth(env: Env) {
 		secret: env.BETTER_AUTH_SECRET,
 		baseURL: env.BETTER_AUTH_URL,
 
+		/* The counter has to be shared or the rule is a fiction. Better Auth already
+		   limits sign in to three attempts in ten seconds, but its default storage
+		   is in memory, which on Workers means three per isolate: a caller spread
+		   across isolates gets a multiple of the intended allowance. In the
+		   database it is one count for the whole account.
+
+		   Enabled in development too, against the library's default, because a
+		   protection nobody can see locally is one nobody notices breaking. */
+		rateLimit: {
+			enabled: true,
+			storage: "database",
+		},
+
 		emailAndPassword: {
 			enabled: true,
 

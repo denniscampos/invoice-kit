@@ -15,4 +15,6 @@ import { betterAuth } from "better-auth";
 export const auth = betterAuth({
 	database: new DatabaseSync(":memory:"),
 	emailAndPassword: { enabled: true },
+	// Storing rate limits in the database is what adds a table, so it belongs here.
+	rateLimit: { enabled: true, storage: "database" },
 });

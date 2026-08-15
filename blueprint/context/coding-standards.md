@@ -100,11 +100,18 @@ cosmetic: it is the line between "touches no storage" and "touches storage".
 
 Rules for the anonymous tier:
 
-- **No anonymous write reaches D1 or R2.** An anonymous invoice lives in
+- **No anonymous user content reaches D1 or R2.** An anonymous invoice lives in
   `sessionStorage` until the user signs up, never `localStorage`: the draft holds
   a third party's billing details and should not outlive the tab. A logo on an
   anonymous invoice is a client-side data URL inlined at render time, never an R2
   object.
+
+  This is a rule about **content**, not about writes. Infrastructure counters may
+  be written by anonymous requests, because they hold no one's information: the
+  daily render counter is a date and a number, and Better Auth's rate limit rows
+  are a key and a count. Both exist so that an anonymous request cannot spend a
+  shared resource, which is the same interest the rule above protects. Nothing
+  about who asked is recorded either way.
 - The PDF endpoint is the only expensive thing an anonymous request can reach.
   It must stay rate limited, and it must not accept an invoice large enough to
   be a denial-of-service payload.

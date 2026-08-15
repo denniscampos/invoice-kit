@@ -113,7 +113,7 @@ separate templates.
 
 **Resolution:**
 
-### F-33 [P2] open - The throttle cannot protect the daily browser quota
+### F-33 [P2] fixed - The throttle cannot protect the daily browser quota
 
 **File:** wrangler.json:19
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -136,7 +136,26 @@ anonymous tier currently touches no storage, so it is worth taking deliberately
 rather than bolting on. Until then the honest description of the protection is
 "stops a loop", not "protects the quota", and the README should not claim more.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement. A `render_quota` table holds one
+row per day, and the PDF route takes a slot from it immediately before the browser
+call, after every other guard, so a malformed or throttled request never costs a
+day's capacity. The cap is 120, under the roughly 150 the free plan's ten minutes
+allows. Past it the endpoint answers 503 with a message naming tomorrow and a
+`Retry-After` counting to the real UTC reset, rather than the 429's "in a minute",
+which would send someone back into the same wall.
+
+The increment is one statement, `on conflict do update ... where renders < ?
+returning`, so two simultaneous renders cannot both read the same number, and a
+refusal returns nothing rather than inflating the count under a flood. Both were
+verified against the local database: three calls returned 1, 2, 3; a call at the
+cap returned no row and left the count at 120.
+
+Verified end to end: a real download took the count 0 to 1, a malformed draft left
+it unchanged, a request at the cap was refused in 9ms with zero renders attempted,
+and clearing the row let downloads resume. The counter holds a date and a number
+and nothing about who asked, which is why writing it from an anonymous request is
+consistent with the tier rule; that rule was amended in the same change to say it
+governs content rather than writes.
 
 ### F-35 [P3] open - The app bar does not fit a 320px screen
 
@@ -154,3 +173,52 @@ designed.
 is the least useful of the four things competing for the row. Both are one class.
 
 **Resolution:**
+
+### F-36 [P2] fixed - Auth rate limiting is on by default but stores its counters per isolate
+
+**File:** app/lib/auth.server.ts:12
+**Found:** 2026-08-15, raised at the user's request after deploying feature 6b
+**Why it matters:** `/api/auth/*` is live and unauthenticated, and sign in is the
+one endpoint where guessing repeatedly is the whole attack. Better Auth is not
+silent about this: rate limiting is enabled by default in production, and
+`/sign-in/email` carries a stricter default of three requests per ten seconds.
+The problem is where the counter lives. Storage defaults to **in memory**, which
+the library's own documentation calls "not suitable for many use cases,
+particularly in serverless environments", because each instance keeps its own
+count rather than sharing one. Cloudflare runs many isolates across many
+locations, so the real allowance is three per ten seconds *per isolate*, and a
+caller who spreads requests around gets a multiple of the intended limit. The
+same shape as F-33, and for the same reason: a per instance counter cannot
+enforce a global rule.
+
+This is a gap in effectiveness rather than an absence of protection, which is why
+it is P2 rather than P1. Nothing here is a confirmed breach: it has not been
+measured against the deployed Worker, and doing so would mean running a password
+guessing burst against production, which is worth planning rather than improvising.
+
+Also worth knowing while working locally: rate limiting is **disabled in
+development** by default, so no amount of local testing will show it working.
+**Suggested fix:** set `rateLimit.storage: "database"` in the auth options. The
+D1 binding feature 6a added is already there, so the counter can live in the same
+database as the sessions and be shared by every isolate. Better Auth generates
+the table it needs, which means a new migration alongside the existing one.
+Consider `rateLimit.enabled: true` in development as well, so the behaviour is
+visible where it can be tested cheaply.
+
+**Resolution:** Fixed 2026-08-15 by /implement. `rateLimit.storage` is now
+`"database"`, so Better Auth's existing three-per-ten-seconds rule on
+`/sign-in/email` counts against one shared row instead of one per isolate. Its
+table was generated rather than hand written and applied as migration 0002, which
+carries only the new table because 0001 already created the other four.
+
+Rate limiting is also enabled in development, against the library's default of
+production only, because a protection nobody can see locally is one nobody
+notices breaking.
+
+Verified against the running app: six wrong-password attempts returned 401, 401,
+401, then 429 "Too many requests. Please try again later.", and the shared count
+appeared in the table as `no-trusted-ip|/sign-in/email` with a value of 3. A
+correct sign in after the window succeeded, so the throttle recovers rather than
+locking an account out. The key is `no-trusted-ip` only in local development,
+where no `CF-Connecting-IP` header exists; in production Cloudflare sets it and
+the bucket is per caller.
