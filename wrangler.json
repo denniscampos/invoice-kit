@@ -7,6 +7,15 @@
 	"observability": {
 		"enabled": true
 	},
+	/* Browser Rendering, for turning the invoice document into a PDF. There is no
+	   local implementation of this binding, so `remote` points the dev server at
+	   the real service rather than leaving `env.BROWSER` undefined. Renders in
+	   development are real renders: they cost account quota, which on the free
+	   tier is ten minutes of browser time a day. */
+	"browser": {
+		"binding": "BROWSER",
+		"remote": true
+	},
 	"upload_source_maps": true,
 	"vars": {
 		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"

@@ -25,6 +25,28 @@ import type { InvoiceDraft } from "~/types/invoice";
    the browser call, which is the expensive one. */
 export const MAX_DRAFT_BYTES = 128 * 1024;
 
+/* Long enough for any real invoice number, short enough that no filesystem or
+   browser has an opinion about it. */
+const MAX_FILENAME_STEM = 60;
+
+/* What the downloaded file is called. The invoice number is user input that
+   arrives in a request body and goes straight into a Content-Disposition
+   header, so this is a sanitizer before it is a formatter: a quote would end the
+   filename early and a newline would start a header of the attacker's choosing.
+
+   Only letters, digits, dot, dash, and underscore survive; everything else
+   collapses to a dash. Leading dots and dashes go too, which is what turns a
+   path like ../../etc/passwd into etc-passwd rather than something a careless
+   consumer might treat as a path. */
+export function pdfFilename(invoiceNumber: string): string {
+	const stem = invoiceNumber
+		.replace(/[^A-Za-z0-9._-]+/g, "-")
+		.slice(0, MAX_FILENAME_STEM)
+		.replace(/^[-.]+|[-.]+$/g, "");
+
+	return stem ? `${stem}.pdf` : "invoice.pdf";
+}
+
 /* Page geometry lives here rather than in a template, the split feature 3 set:
    the templates carry their own padding and the container decides the paper.
    margin: 0 on the page and the template's padding as the printed margin, so

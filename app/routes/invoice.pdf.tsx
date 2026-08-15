@@ -1,6 +1,12 @@
+import puppeteer from "@cloudflare/puppeteer";
 import type { Route } from "./+types/invoice.pdf";
+import { cloudflareContext } from "~/context";
 import { parseDraft } from "~/lib/invoice-draft";
-import { buildPrintDocument, MAX_DRAFT_BYTES } from "~/lib/print-document.server";
+import {
+	buildPrintDocument,
+	MAX_DRAFT_BYTES,
+	pdfFilename,
+} from "~/lib/print-document.server";
 import { readBoundedText } from "~/lib/request.server";
 
 /* The account free render endpoint. It takes an invoice draft as JSON and
@@ -27,12 +33,25 @@ function fail(status: number, message: string, headers: HeadersInit = {}) {
 const methodNotAllowed = () =>
 	fail(405, "Use POST with an invoice draft as JSON.", { allow: "POST" });
 
+/* The free tier lets a new browser start once every twenty seconds, so that is
+   the shortest honest thing to tell someone to wait. */
+const BROWSER_RETRY_AFTER_SECONDS = 20;
+
+/* Cloudflare reports an exhausted browser quota as a 429 inside the launch
+   error's message. Matching on text is not something to be proud of, but the
+   error carries no code to read, and the alternative is telling a user their
+   invoice is broken when it is merely queued. */
+function isOutOfBrowserQuota(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.includes("429") || /rate limit/i.test(message);
+}
+
 // A GET reaches the loader rather than the action, so the refusal lives here too.
 export function loader() {
 	return methodNotAllowed();
 }
 
-export async function action({ request }: Route.ActionArgs) {
+export async function action({ request, context }: Route.ActionArgs) {
 	if (request.method !== "POST") return methodNotAllowed();
 
 	/* The declared length is a cheap first refusal, and it is not trusted: a
@@ -63,11 +82,63 @@ export async function action({ request }: Route.ActionArgs) {
 	const draft = parseDraft(payload);
 	if (!draft) return fail(400, "That is not a valid invoice draft.");
 
-	return new Response(buildPrintDocument(draft), {
-		headers: {
-			"content-type": "text/html; charset=utf-8",
-			// Someone's billing details: never hold a copy at the edge.
-			"cache-control": "no-store",
-		},
-	});
+	const { env } = context.get(cloudflareContext);
+	let browser: Awaited<ReturnType<typeof puppeteer.launch>> | undefined;
+
+	try {
+		browser = await puppeteer.launch(env.BROWSER);
+		const page = await browser.newPage();
+
+		/* networkidle0, not the default: the document links a webfont, and taking
+		   the PDF the moment the markup is set would set the invoice in whatever
+		   the browser falls back to. */
+		await page.setContent(buildPrintDocument(draft), {
+			waitUntil: "networkidle0",
+		});
+
+		/* And then wait for the font itself. networkidle0 covers the request in
+		   practice, but it is a quiet-network heuristic, not a promise that the
+		   face is ready to paint; this is the actual signal. A PDF set in the
+		   fallback face looks fine until you hold it next to the preview. */
+		await page.evaluate(() => document.fonts.ready);
+
+		/* printBackground because the paper and Classic's filled table head are
+		   backgrounds, and a print defaults to dropping them. */
+		const pdf = await page.pdf({ format: "Letter", printBackground: true });
+
+		/* puppeteer types the result as a Node Buffer, which the Workers Response
+		   does not take. Copying it into a plain Uint8Array is a few hundred
+		   kilobytes and keeps the types honest, rather than casting the mismatch
+		   away. */
+		return new Response(new Uint8Array(pdf), {
+			headers: {
+				"content-type": "application/pdf",
+				"content-disposition": `attachment; filename="${pdfFilename(draft.invoiceNumber)}"`,
+				// Someone's billing details: never hold a copy at the edge.
+				"cache-control": "no-store",
+			},
+		});
+	} catch (error) {
+		// Detail to the Worker log, which observability is on for; a sentence to
+		// the caller, who can do nothing with a stack trace.
+		console.error("Invoice PDF render failed", error);
+
+		/* Running out of browser quota is the failure this app will actually see:
+		   the free tier allows one new browser every twenty seconds. Telling
+		   someone that something broke, when all they have to do is wait, is the
+		   wrong answer, so it gets its own status and its own sentence. */
+		if (isOutOfBrowserQuota(error)) {
+			return fail(
+				503,
+				"Too many invoices are being generated right now. Try again in a moment.",
+				{ "retry-after": String(BROWSER_RETRY_AFTER_SECONDS) },
+			);
+		}
+
+		return fail(502, "The invoice could not be rendered right now.");
+	} finally {
+		/* Always, including after a throw. A session left open counts against the
+		   concurrent limit until it times out ten minutes later. */
+		await browser?.close();
+	}
 }

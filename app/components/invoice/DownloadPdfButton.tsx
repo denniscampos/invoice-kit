@@ -1,0 +1,92 @@
+import { useState } from "react";
+import { Button } from "~/components/ui/button";
+import type { InvoiceDraft } from "~/types/invoice";
+
+/* The primary action, where the editor mockup puts it. It posts the draft the
+   user is looking at and hands back the file the Worker rendered.
+
+   A render takes a few seconds, which is long enough that the button has to say
+   so, and it can fail for a reason worth reading, which is why the message comes
+   from the response rather than being invented here. */
+
+type DownloadPdfButtonProps = {
+	draft: InvoiceDraft;
+};
+
+const GENERIC_ERROR = "The download failed. Please try again.";
+
+/* The server already sanitized this name into the header; reading it back beats
+   shipping a second copy of that logic to the browser. */
+function filenameFrom(disposition: string | null): string {
+	const match = disposition?.match(/filename="([^"]+)"/);
+	return match ? match[1] : "invoice.pdf";
+}
+
+function saveBlob(blob: Blob, filename: string) {
+	const url = URL.createObjectURL(blob);
+	const link = document.createElement("a");
+
+	link.href = url;
+	link.download = filename;
+	link.click();
+
+	// The object URL pins the blob in memory until it is let go.
+	URL.revokeObjectURL(url);
+}
+
+export function DownloadPdfButton({ draft }: DownloadPdfButtonProps) {
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	async function download() {
+		setPending(true);
+		setError(null);
+
+		try {
+			const response = await fetch("/invoice/pdf", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(draft),
+			});
+
+			if (!response.ok) {
+				/* The endpoint answers in plain sentences, including the one about
+				   waiting a moment when the account is out of browser quota. */
+				const message = await response.text();
+				setError(message.trim() || GENERIC_ERROR);
+				return;
+			}
+
+			saveBlob(
+				await response.blob(),
+				filenameFrom(response.headers.get("content-disposition")),
+			);
+		} catch {
+			// A dropped connection or an offline browser never reaches the endpoint.
+			setError(GENERIC_ERROR);
+		} finally {
+			setPending(false);
+		}
+	}
+
+	return (
+		<div className="flex items-center gap-3">
+			{error ? (
+				/* Beside the button rather than in a toast: it is a short sentence
+				   about the thing the user just pressed. */
+				<span role="alert" className="text-xs text-destructive">
+					{error}
+				</span>
+			) : null}
+			<Button
+				type="button"
+				size="sm"
+				onClick={download}
+				disabled={pending}
+				aria-busy={pending}
+			>
+				{pending ? "Preparing PDF..." : "Download PDF"}
+			</Button>
+		</div>
+	);
+}

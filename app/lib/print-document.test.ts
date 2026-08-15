@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDraft } from "./invoice-draft";
-import { buildPrintDocument } from "./print-document.server";
+import { buildPrintDocument, pdfFilename } from "./print-document.server";
 import type { InvoiceDraft } from "~/types/invoice";
 
 /* Real CSS is passed in rather than imported: PRINT_STYLES resolves to an empty
@@ -110,5 +110,58 @@ describe("buildPrintDocument", () => {
 		expect(html).toContain("No items yet");
 		expect(html).not.toContain("undefined");
 		expect(html).not.toContain("NaN");
+	});
+});
+
+describe("pdfFilename", () => {
+	it("names the file after the invoice number", () => {
+		expect(pdfFilename("INV-0007")).toBe("INV-0007.pdf");
+		expect(pdfFilename("2026_08_INV.14")).toBe("2026_08_INV.14.pdf");
+	});
+
+	it("collapses anything that is not filename material", () => {
+		expect(pdfFilename("INV 0007")).toBe("INV-0007.pdf");
+		expect(pdfFilename("INV/0007")).toBe("INV-0007.pdf");
+		expect(pdfFilename("Facture nº 7 (août)")).toBe("Facture-n-7-ao-t.pdf");
+	});
+
+	/* The reason this function exists. A quote ends the filename early and a
+	   newline starts a header of the caller's choosing, and this value reaches a
+	   Content-Disposition header from a request body. */
+	it.each([
+		['a quote', 'INV"0007'],
+		["a newline", "INV\n0007"],
+		["a carriage return", "INV\r\n0007"],
+		["a header break", 'INV"; x=1\r\nSet-Cookie: a=b'],
+		["a semicolon", "INV;0007"],
+	])("strips %s", (_label, invoiceNumber) => {
+		const name = pdfFilename(invoiceNumber);
+
+		expect(name).not.toMatch(/["\r\n;]/);
+		expect(name.endsWith(".pdf")).toBe(true);
+	});
+
+	it("cannot be turned into a path", () => {
+		expect(pdfFilename("../../etc/passwd")).toBe("etc-passwd.pdf");
+		expect(pdfFilename("/etc/passwd")).toBe("etc-passwd.pdf");
+		expect(pdfFilename("..")).toBe("invoice.pdf");
+	});
+
+	it.each([
+		["an empty string", ""],
+		["only spaces", "   "],
+		["only punctuation", "///..."],
+		["only dashes", "---"],
+	])("falls back to a generic name for %s", (_label, invoiceNumber) => {
+		expect(pdfFilename(invoiceNumber)).toBe("invoice.pdf");
+	});
+
+	it("truncates a number nobody should have typed", () => {
+		const name = pdfFilename("INV-".repeat(200));
+
+		expect(name.length).toBeLessThanOrEqual(64);
+		expect(name.endsWith(".pdf")).toBe(true);
+		// Truncation must not leave the stem ending in a dash.
+		expect(name).not.toContain("-.pdf");
 	});
 });

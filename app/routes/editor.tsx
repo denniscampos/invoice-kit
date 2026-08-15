@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Route } from "./+types/editor";
 import { AppBar } from "~/components/AppBar";
+import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
 import { InvoiceDetailsFields } from "~/components/invoice/InvoiceDetailsFields";
 import { LineItemsCard } from "~/components/invoice/LineItemsCard";
 import { PartyFields } from "~/components/invoice/PartyFields";
@@ -66,7 +67,7 @@ export default function Editor() {
 
 	return (
 		<>
-			<AppBar />
+			<AppBar actions={<DownloadPdfButton draft={draft} />} />
 			<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6">
 				<div className="flex flex-col gap-4">
 					<InvoiceDetailsFields draft={draft} onChange={patchDraft} />
