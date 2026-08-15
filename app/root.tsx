@@ -9,11 +9,27 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import { cloudflareContext } from "~/context";
+import { getUser } from "~/lib/auth.server";
 import {
 	FONT_CSS_ORIGIN,
 	FONT_FILE_ORIGIN,
 	INTER_STYLESHEET_HREF,
 } from "~/lib/fonts";
+
+/* Who is signed in, resolved once for the whole app.
+
+   Here rather than in each page so every route gets a truthful app bar without
+   asking, and so the answer arrives with the document: a client side lookup
+   would render the bar as anonymous first and correct itself a moment later.
+
+   This runs on every navigation, so it stays one indexed lookup. Anything else
+   added here is paid for on every page load in the app. */
+export async function loader({ request, context }: Route.LoaderArgs) {
+	const { env } = context.get(cloudflareContext);
+
+	return { user: await getUser(request, env) };
+}
 
 export const links: Route.LinksFunction = () => [
 	{ rel: "preconnect", href: FONT_CSS_ORIGIN },

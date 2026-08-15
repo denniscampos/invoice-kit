@@ -1,13 +1,12 @@
 import { useEffect, useState } from "react";
 import type { Route } from "./+types/editor";
-import { Link } from "react-router";
 import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
 import { InvoiceDetailsFields } from "~/components/invoice/InvoiceDetailsFields";
 import { LineItemsCard } from "~/components/invoice/LineItemsCard";
 import { PartyFields } from "~/components/invoice/PartyFields";
 import { PreviewPane } from "~/components/invoice/PreviewPane";
-import { Button } from "~/components/ui/button";
+import { SessionActions } from "~/components/SessionActions";
 import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Textarea } from "~/components/ui/textarea";
 import {
@@ -70,16 +69,13 @@ export default function Editor() {
 	return (
 		<>
 			<AppBar
-					actions={
-						<div className="flex items-center gap-2">
-							{/* Static for now: 6c makes this reflect who is signed in. */}
-							<Button asChild variant="ghost" size="sm">
-								<Link to="/sign-in">Sign in</Link>
-							</Button>
-							<DownloadPdfButton draft={draft} />
-						</div>
-					}
-				/>
+				actions={
+					<div className="flex items-center gap-2">
+						<SessionActions />
+						<DownloadPdfButton draft={draft} />
+					</div>
+				}
+			/>
 			<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6">
 				<div className="flex min-w-0 flex-col gap-4">
 					<InvoiceDetailsFields draft={draft} onChange={patchDraft} />

@@ -7,7 +7,7 @@ import { Input } from "~/components/ui/input";
 import { cloudflareContext } from "~/context";
 import { MIN_PASSWORD_LENGTH } from "~/lib/auth-constants";
 import { authErrorMessage, signUpProblem } from "~/lib/auth-errors.server";
-import { createAuth } from "~/lib/auth.server";
+import { createAuth, getUser, redirectDestination } from "~/lib/auth.server";
 
 /* Creating an account. The form posts here rather than to /api/auth from the
    browser: the validation and the refusal both belong on the server, and a
@@ -22,10 +22,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	const { env } = context.get(cloudflareContext);
 
 	// Nobody needs a sign up form when they already have an account open.
-	const session = await createAuth(env).api.getSession({
-		headers: request.headers,
-	});
-	if (session) throw redirect("/");
+	if (await getUser(request, env)) {
+		throw redirect(redirectDestination(request));
+	}
 
 	return null;
 }
@@ -58,7 +57,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 			outgoing.append("set-cookie", cookie);
 		}
 
-		return redirect("/", { headers: outgoing });
+		return redirect(redirectDestination(request), { headers: outgoing });
 	} catch (error) {
 		/* What the user typed comes back with the message, so a short password
 		   does not also cost them their name and email. The password itself is

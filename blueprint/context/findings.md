@@ -157,7 +157,7 @@ and nothing about who asked, which is why writing it from an anonymous request i
 consistent with the tier rule; that rule was amended in the same change to say it
 governs content rather than writes.
 
-### F-35 [P3] open - The app bar does not fit a 320px screen
+### F-35 [P3] fixed - The app bar does not fit a 320px screen
 
 **File:** app/components/AppBar.tsx:3
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -172,7 +172,32 @@ designed.
 **Suggested fix:** let the bar wrap, or drop the Editor pill below `sm`, where it
 is the least useful of the four things competing for the row. Both are one class.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement, during feature 6c. That feature
+adds the signed-in name and a Sign out button to this row, which took the
+measured content from 335px to 415px inside 305px, so repairing it here was not
+optional.
+
+The finding's own suggestion was not quite enough on its own: dropping the Editor
+pill below `sm` recovers about 84px and still leaves 331px in 305px. The wordmark
+goes with it, leaving the IK mark alone on a phone. Those are the two things in
+the row nobody needs there, one repeating what the mark already says and the
+other naming the page you are on, while the Sign out and Download PDF buttons are
+what someone actually reached for. Horizontal padding also drops to `px-4` below
+`sm`.
+
+Measured in the browser at each width, signed in and signed out, as
+`documentElement.scrollWidth` against `clientWidth`:
+
+| Width | Bar | Scroll / client |
+|---|---|---|
+| 320 signed in | IK, Sign out, Download PDF | 305 / 305 |
+| 320 signed out | IK, Sign in, Download PDF | 305 / 305 |
+| 360 | IK, Sign in, Download PDF | 345 / 345 |
+| 640 | full bar returns | 625 / 625 |
+| 1280 | full bar | 1265 / 1265 |
+
+The 360px case also fixes the second half of the finding: the brand measured 22px
+tall rather than wrapping onto two lines.
 
 ### F-36 [P2] fixed - Auth rate limiting is on by default but stores its counters per isolate
 

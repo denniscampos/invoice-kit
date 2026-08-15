@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { cloudflareContext } from "~/context";
 import { authErrorMessage, signInProblem } from "~/lib/auth-errors.server";
-import { createAuth } from "~/lib/auth.server";
+import { createAuth, getUser, redirectDestination } from "~/lib/auth.server";
 
 /* Signing back in. Same shape as sign up, and the same reason for posting here
    rather than to /api/auth from the browser. */
@@ -19,10 +19,9 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 	const { env } = context.get(cloudflareContext);
 
 	// Nobody needs a sign in form when they are already signed in.
-	const session = await createAuth(env).api.getSession({
-		headers: request.headers,
-	});
-	if (session) throw redirect("/");
+	if (await getUser(request, env)) {
+		throw redirect(redirectDestination(request));
+	}
 
 	return null;
 }
@@ -51,7 +50,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 			outgoing.append("set-cookie", cookie);
 		}
 
-		return redirect("/", { headers: outgoing });
+		return redirect(redirectDestination(request), { headers: outgoing });
 	} catch (error) {
 		return data({ error: authErrorMessage(error), values: { email } }, { status: 400 });
 	}

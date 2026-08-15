@@ -8,4 +8,6 @@ export default [
 	route("api/auth/*", "routes/api.auth.$.tsx"),
 	route("sign-up", "routes/sign-up.tsx"),
 	route("sign-in", "routes/sign-in.tsx"),
+	// Action only: a GET that ends a session is a link anything can fire.
+	route("sign-out", "routes/sign-out.tsx"),
 ] satisfies RouteConfig;
