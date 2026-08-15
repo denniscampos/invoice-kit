@@ -40,6 +40,18 @@
 			"simple": { "limit": 5, "period": 60 }
 		}
 	],
+	/* The account database. Better Auth owns its four tables here from feature 6a,
+	   and invoices join them at feature 7. Development runs entirely against the
+	   local SQLite file wrangler keeps under .wrangler/state; the remote database
+	   is written only by `d1 migrations apply --remote` at deploy time. */
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "invoice-kit-db",
+			"database_id": "37adf047-fb46-42b2-bc0b-0da6338ff33c",
+			"migrations_dir": "migrations"
+		}
+	],
 	"upload_source_maps": true,
 	"vars": {
 		"VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare"

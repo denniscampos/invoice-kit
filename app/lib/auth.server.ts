@@ -1,0 +1,32 @@
+import { betterAuth } from "better-auth";
+
+/* The auth server. Better Auth owns accounts, sessions, password hashing, and
+   its own four tables in D1; nothing in this project hashes a password or mints
+   a session token.
+
+   A factory rather than a module level instance, and that is not a style
+   preference: `env.DB` is a request scoped binding that does not exist while
+   this module is being imported, so a top level `betterAuth({ database: env.DB })`
+   would be constructed with nothing. Every caller builds one from the env it was
+   handed. */
+export function createAuth(env: Env) {
+	return betterAuth({
+		/* The binding goes straight in: `D1Database` is one of the accepted
+		   database types, so there is no dialect to wire up and no adapter
+		   package. */
+		database: env.DB,
+
+		secret: env.BETTER_AUTH_SECRET,
+		baseURL: env.BETTER_AUTH_URL,
+
+		emailAndPassword: {
+			enabled: true,
+
+			/* Deferred for MVP, recorded in the feature 6a spec: verification needs
+			   an email sender, which would be the first third party key a self
+			   hoster has to obtain, against a setup promise of no service keys.
+			   Sign up therefore works immediately. */
+			requireEmailVerification: false,
+		},
+	});
+}
