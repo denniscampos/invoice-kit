@@ -257,6 +257,18 @@ original numbers sat above the platform's own ceiling and so never fired first.
    a 503 from the quota rather than our 429. A short client side cooldown on the
    Download button would close it.
 
+3. Added 2026-08-15 after testing the deployed Worker, and the most important of
+   the three. The binding is enforced **per Cloudflare location**, not globally:
+   the documentation calls it "permissive, eventually consistent, and
+   intentionally designed to not be used as an accurate accounting system", and
+   each location keeps its own asynchronously updated count. Observed live: eight
+   rapid posts from one client returned `400 400 400 400 429 429 400 429` rather
+   than refusing everything past the second. So the per caller limit is a
+   guideline rather than a ceiling, and `PDF_GLOBAL_LIMITER` is weaker than its
+   name suggests, since five a minute is five a minute *per location* rather than
+   five worldwide. It still cuts a flood down hard, which is the job, but it
+   cannot be the thing that guarantees the daily quota survives.
+
 Leaving this `fixed` rather than closed is the point: an /audit pass should look
 at the remaining exposure and decide whether it deserves its own entry.
 
