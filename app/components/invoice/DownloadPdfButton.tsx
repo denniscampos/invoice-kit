@@ -28,10 +28,18 @@ function saveBlob(blob: Blob, filename: string) {
 
 	link.href = url;
 	link.download = filename;
-	link.click();
 
-	// The object URL pins the blob in memory until it is let go.
-	URL.revokeObjectURL(url);
+	/* In the document and then out again. Chromium downloads from a detached
+	   anchor, other browsers have not always, and an element nobody can see for
+	   one tick costs nothing. */
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+
+	/* Revoked on a later turn, not this one. The URL is what lets the browser
+	   reach the blob, and a browser that starts the transfer after the current
+	   task would find it already gone. */
+	setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 export function DownloadPdfButton({ draft }: DownloadPdfButtonProps) {

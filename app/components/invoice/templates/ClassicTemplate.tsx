@@ -19,6 +19,15 @@ type InvoiceTemplateProps = {
    font is told to be. Serif for the words, sans for the numbers. */
 const FIGURES = "font-sans tabular-nums";
 
+/* The serif itself is `--font-serif`, a system stack, so the document costs no
+   webfont request. The price, accepted rather than overlooked: the PDF is
+   rendered on Linux, which has none of Georgia or Times New Roman, so the file
+   comes back set in Liberation Serif while a macOS preview shows Georgia. Both
+   are respectable and the layout is identical, but preview and PDF are not the
+   same face for this template. Giving Classic a webfont serif would close the
+   gap and add a network request to every render; that is a design decision, not
+   a defect to quietly fix. */
+
 /* Serif, like the rest of the document's text. FIGURES above is the single
    deliberate exception, and it is a legibility fix rather than a taste call.
 

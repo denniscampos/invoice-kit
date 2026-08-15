@@ -7,7 +7,7 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-02 [P2] open - Ported theme tokens duplicate shadcn tokens with the same values
+### F-02 [P2] fixed - Ported theme tokens duplicate shadcn tokens with the same values
 
 **File:** app/app.css:20
 **Why it matters:** `--color-surface` (#ffffff), `--color-surface-sunken`
@@ -22,9 +22,14 @@ until a later feature used the stale half.
 (`--color-paper*`, `--color-status-*`, `--color-faint`) and delete the four
 duplicates, or define them as aliases such as
 `--color-surface: var(--card)` so a single edit moves both.
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement. The four duplicates are deleted;
+`--color-faint` stays, since shadcn has no equivalent for it, which is the
+distinction this entry drew. Verified no references remain in `app/` beyond the
+comment that records the removal, and the compiled stylesheet no longer contains
+them. The running app is unchanged: app bar white, page `rgb(246,247,249)`,
+preview sunken `rgb(240,242,245)`, paper white.
 
-### F-04 [P3] open - Unused exports in the draft module
+### F-04 [P3] fixed - Unused exports in the draft module
 
 **File:** app/lib/invoice-draft.ts:3
 **Found:** 2026-08-13 by /audit (scope: current)
@@ -36,7 +41,12 @@ call rather than dead code.
 **Suggested fix:** drop `export` from the ones nothing outside the module needs,
 and re-export them when a caller appears. Leaving them is defensible if you
 prefer the module to read as a public API.
-**Resolution:** Still open, list revised 2026-08-14 by /audit (scope: current).
+**Resolution:** Fixed 2026-08-15 by /implement. `DRAFT_VERSION`,
+`DRAFT_STORAGE_KEY`, `DEFAULT_CURRENCY`, `DEFAULT_INVOICE_NUMBER`, and
+`createLineItem` are no longer exported. `toIsoDate` keeps its export because
+three tests import it, which grep confirmed rather than the list in this entry,
+written before those tests existed; a comment now says so. `DEFAULT_TEMPLATE_ID`
+and `PartyAddressLine` left this list earlier when real callers appeared. Still open, list revised 2026-08-14 by /audit (scope: current).
 Feature 4 moved `DEFAULT_TEMPLATE_ID` to `app/lib/invoice-templates.ts`, where
 `invoice-draft.ts` now imports it, so it leaves this list with a real cross-module
 caller. The remaining six are unchanged. Feature 4 also added one new instance of
@@ -46,7 +56,7 @@ judgment call, same fix. Updated again the same day: the F-20 repair gave
 `PartyAddressLine` a real importer in `CompactTemplate.tsx`, so it leaves this
 list too. The original six from feature 1 and 2 are what remain.
 
-### F-06 [P3] open - CSS-only packages sit in runtime dependencies
+### F-06 [P3] fixed - CSS-only packages sit in runtime dependencies
 
 **File:** package.json:17
 **Found:** 2026-08-13 by /audit (scope: current)
@@ -57,7 +67,10 @@ list too. The original six from feature 1 and 2 are what remain.
 production install, which works against the clone-and-run self-hosting story.
 **Suggested fix:** move both to `devDependencies` to match how `tailwindcss` is
 already treated, then confirm `pnpm build` still passes.
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement. Both moved to
+`devDependencies`. The proof is the build: they are reached only through `@import`
+in `app.css`, so `pnpm build` passing afterwards is what shows they were build
+time only. Runtime `dependencies` is now fourteen packages with neither in it.
 
 ### F-08 [P3] open - Clearing the issue date wipes a due date typed to exactly the default
 
@@ -142,7 +155,7 @@ only). Both are cheap; neither is worth doing while the picker holds five
 similar currencies.
 **Resolution:**
 
-### F-19 [P2] open - The editor scrolls sideways on a phone-width screen
+### F-19 [P2] fixed - The editor scrolls sideways on a phone-width screen
 
 **File:** app/routes/editor.tsx:70
 **Found:** 2026-08-14 by /audit (scope: current)
@@ -163,7 +176,20 @@ breakpoint, or let the fixed tracks shrink there. `min-w-0` on the grid items is
 usually the missing half of the fix, since grid children default to
 `min-width: auto` and refuse to shrink past their content.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement, and it needed two changes rather
+than the one this entry predicted. The line item row now stacks below `sm`, with
+the numbers on their own labelled line and the header row hidden, which removed
+the 396px of fixed tracks. That alone took the page from 526px to 418px against a
+360px viewport, and measuring again found the second cause: the invoice paper in
+the preview has its own minimum width, and both grid tracks inherited it. Adding
+`min-w-0` to the editor's two columns lets the tracks shrink and leaves the paper
+to scroll inside its own frame, which is what feature 3 built that frame for.
+
+Verified at 360px: no horizontal scrollbar, document scroll width equals client
+width, the rate field shows `4,500.00` in full, and the row is usable with every
+input labelled. Verified at 1440px: fields still on one row at their original 78
+and 110 pixel widths, header row visible, per row labels hidden (six present,
+none visible).
 
 ### F-23 [P3] open - The three templates each keep their own copy of the document's rules
 
@@ -188,7 +214,7 @@ separate templates.
 
 **Resolution:**
 
-### F-27 [P3] open - An unstyled print document would ship silently
+### F-27 [P3] fixed - An unstyled print document would ship silently
 
 **File:** app/lib/print-styles.ts:11
 **Found:** 2026-08-14 by /audit (scope: full)
@@ -206,73 +232,15 @@ since the unit suite cannot see the real string. A runtime guard in the route
 that refuses to render with empty styles is the smaller version and still beats
 silence.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement. `buildPrintDocument` throws when
+handed an empty stylesheet instead of returning a structurally perfect, unstyled
+document. The call sits inside the route's existing try/catch, so the failure
+surfaces as the 502 the endpoint already defines, with the reason in the Worker
+log. Two tests cover it, empty and whitespace, and a real render still returns
+89KB of PDF, which is what proves the guard does not fire on the real
+stylesheet.
 
-### F-30 [P2] fixed - The deployed render endpoint has no throttle in front of it
-
-**File:** app/routes/invoice.pdf.tsx:56
-**Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** `POST /invoice/pdf` is live at the public URL and reaches
-Browser Rendering with no per-caller limit. On the Workers Free plan the account
-gets ten minutes of browser time a day and one new browser every twenty seconds,
-and a render costs three to four seconds, so roughly a hundred and fifty requests
-exhaust the day for everyone. The guards in front of the call are all about the
-shape of the request, not how often it arrives: a valid draft posted in a loop is
-refused by nothing. `project-overview.md` names this as a deploy blocker in as
-many words.
-
-Deployed knowingly: the user chose to stay on the free tier with rate limiting as
-the guard rail, and then asked for the deploy before that work landed. This entry
-exists so the exposure is recorded rather than living only in the roadmap.
-**Suggested fix:** feature 15, which is the next build-plan item. Cloudflare's
-rate limiting binding keyed on client IP is the smallest version; a 429 with
-`Retry-After` matches what the endpoint already returns for exhausted quota, and
-the Download button already renders that message.
-
-**Resolution:** Repaired in part 2026-08-15 by /implement, feature 15. Two rate
-limiters now sit in front of the render endpoint: `PDF_LIMITER` at two requests a
-minute per caller, keyed on `CF-Connecting-IP`, and `PDF_GLOBAL_LIMITER` at five
-a minute across everyone. The check runs after the method test and before the
-body is read, so a flood is refused at the door, and it answers 429 with
-`Retry-After: 60` and a sentence the Download button already displays.
-
-Verified against the running Worker: a third post inside a minute from one caller
-is refused with 429 while a different caller still succeeds; spoofing
-`X-Forwarded-For` on every request does not earn a fresh allowance, which is the
-mistake this would most easily have made; a request with no `CF-Connecting-IP`
-shares one strict bucket rather than skipping the check; and zero renders were
-attempted across the whole throttle test, so nothing reached Browser Rendering.
-The limits were then tuned down from 5 and 20 because evidence showed the
-original numbers sat above the platform's own ceiling and so never fired first.
-
-**In part**, deliberately. Two gaps remain and neither is closed by this work:
-
-1. The binding's window is only 10 or 60 seconds, so this is a burst guard, not a
-   daily budget. A slow drip from many addresses could still exhaust the ten
-   minutes of browser time a day without tripping any window. Closing that needs
-   a counter that survives a day, which means KV or a Durable Object, and that is
-   a storage decision worth taking on its own.
-2. Cloudflare starts one browser every twenty seconds, which is a spacing rule a
-   fixed window cannot express, so two clicks a few seconds apart can still meet
-   a 503 from the quota rather than our 429. A short client side cooldown on the
-   Download button would close it.
-
-3. Added 2026-08-15 after testing the deployed Worker, and the most important of
-   the three. The binding is enforced **per Cloudflare location**, not globally:
-   the documentation calls it "permissive, eventually consistent, and
-   intentionally designed to not be used as an accurate accounting system", and
-   each location keeps its own asynchronously updated count. Observed live: eight
-   rapid posts from one client returned `400 400 400 400 429 429 400 429` rather
-   than refusing everything past the second. So the per caller limit is a
-   guideline rather than a ceiling, and `PDF_GLOBAL_LIMITER` is weaker than its
-   name suggests, since five a minute is five a minute *per location* rather than
-   five worldwide. It still cuts a flood down hard, which is the job, but it
-   cannot be the thing that guarantees the daily quota survives.
-
-Leaving this `fixed` rather than closed is the point: an /audit pass should look
-at the remaining exposure and decide whether it deserves its own entry.
-
-### F-31 [P3] open - The download's object URL is revoked in the same tick as the click
+### F-31 [P3] fixed - The download's object URL is revoked in the same tick as the click
 
 **File:** app/components/invoice/DownloadPdfButton.tsx:32
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -289,9 +257,16 @@ one output, not an observed break.
 anchor before clicking and remove it after. Both are one line and neither costs
 anything in the browser where it already works.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-15 by /implement. The anchor is appended to the
+document, clicked, and removed, and the object URL is revoked on a later turn via
+`setTimeout` rather than in the same task as the click. Verified in the browser:
+a click downloaded `INV-0001.pdf` at 91,674 bytes, and afterwards the document
+contains zero `a[download]` elements, so nothing is left behind. Note for the
+next reader: `document.body.append` does not typecheck in this project because
+the Workers runtime types contribute a competing `append`; `appendChild` is
+unambiguous.
 
-### F-32 [P3] open - Classic's serif is a different face in the PDF than in the preview
+### F-32 [P3] fixed - Classic's serif is a different face in the PDF than in the preview
 
 **File:** app/components/invoice/templates/ClassicTemplate.tsx:27
 **Found:** 2026-08-15 by /audit (scope: full)
@@ -311,4 +286,65 @@ the way the app already treats Inter, at the cost of a second font request in th
 document feature 5a deliberately keeps light. Worth deciding with feature 13,
 which is the next time the document's assets are opened.
 
+**Resolution:** Accepted and documented 2026-08-15 by /implement, which is the
+first of the two paths this entry offered. The comment beside Classic's face
+records that the system stack is deliberate, that the Linux render box resolves
+it to Liberation Serif while a macOS preview shows Georgia, that the layout is
+identical either way, and that closing the gap means adding a webfont request to
+every render. Recorded so the next reader treats it as a decision rather than a
+bug. The behaviour is unchanged, so this is documentation rather than repair, and
+an /audit pass should decide whether that satisfies the finding or whether the
+webfont is wanted.
+
+### F-33 [P2] open - The throttle cannot protect the daily browser quota
+
+**File:** wrangler.json:19
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** Feature 15 stops a flood, which is what it was asked to do,
+but the thing actually worth protecting is a daily budget and this cannot express
+one. Two reasons, both confirmed rather than assumed. The binding's window is
+only 10 or 60 seconds, so no configuration of it adds up to the ten minutes of
+browser time a day the free plan allows. And Cloudflare enforces the binding
+**per location** with asynchronously updated counts, describing it as
+"permissive, eventually consistent, and intentionally designed to not be used as
+an accurate accounting system": eight rapid posts from one client against a limit
+of two a minute returned `400 400 400 400 429 429 400 429` on the deployed
+Worker. So `PDF_GLOBAL_LIMITER` at five a minute is five a minute per location
+rather than five worldwide, and a caller spread across locations, or simply a
+crowd, can still drain the day.
+**Suggested fix:** a counter that survives a day and is shared, which means KV
+with a daily key or a Durable Object holding the count, checked before the
+browser call and refusing with the same 429. It is a storage decision and the
+anonymous tier currently touches no storage, so it is worth taking deliberately
+rather than bolting on. Until then the honest description of the protection is
+"stops a loop", not "protects the quota", and the README should not claim more.
+
 **Resolution:**
+
+### F-34 [P3] fixed - A rate limiter failure becomes an unexplained 500
+
+**File:** app/routes/invoice.pdf.tsx:81
+
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** `await isThrottled(env, request)` sits outside every
+try/catch in the action; the one that exists starts later and wraps only the
+browser work. If either `limit()` call rejects, the action throws, React Router
+answers 500 "Unexpected Server Error", and nothing is written to the Worker log,
+so the download simply stops working for a reason nobody can see. The binding is
+local rather than a network call, so this is unlikely rather than impossible.
+The deeper gap is that the choice is unmade: whether a limiter that cannot answer
+should let requests through, which risks the quota, or refuse them, which breaks
+downloads, is a real decision and the code currently makes it by accident.
+**Suggested fix:** wrap the two `limit()` calls, log the failure the way the
+render failure is logged, and pick a side explicitly with a comment saying why.
+Failing open is the usual choice for a protective limiter, and here it hands the
+browser quota to whatever caused the failure, so failing closed with a 503 is
+defensible too.
+
+**Resolution:** Fixed 2026-08-15 by /implement. The limiter calls are wrapped, a
+failure is logged the way the render failure is, and the endpoint answers 503
+with `Retry-After`. The choice is now explicit and commented: **fail closed**,
+because waving traffic through hands the account's daily browser allowance to
+whatever just broke, and that allowance cannot be refilled before tomorrow.
+Verified the ordinary paths still work: a real download returns a PDF and the
+throttle still answers 429 on the third request in a minute.

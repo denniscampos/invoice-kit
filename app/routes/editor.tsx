@@ -69,7 +69,7 @@ export default function Editor() {
 		<>
 			<AppBar actions={<DownloadPdfButton draft={draft} />} />
 			<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6">
-				<div className="flex flex-col gap-4">
+				<div className="flex min-w-0 flex-col gap-4">
 					<InvoiceDetailsFields draft={draft} onChange={patchDraft} />
 					<LineItemsCard draft={draft} onChange={patchDraft} />
 					<PartyFields
@@ -101,7 +101,12 @@ export default function Editor() {
 					</Card>
 				</div>
 
-				<div className="editor:sticky editor:top-20">
+				{/* min-w-0 because a grid item defaults to min-width:auto, which means
+				    it refuses to be narrower than its content. The document inside has
+				    a real minimum width, and without this the whole page widens to fit
+				    it and scrolls sideways on a phone. It scrolls inside its own frame
+				    instead, which is what the frame was built for. */}
+				<div className="editor:sticky editor:top-20 min-w-0">
 					<PreviewPane draft={draft} onChange={patchDraft} />
 				</div>
 			</main>

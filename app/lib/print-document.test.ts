@@ -103,8 +103,17 @@ describe("buildPrintDocument", () => {
 		expect(html).toContain("&lt;/title&gt;");
 	});
 
+	/* An unstyled document is a silent failure: perfect structure, no design, and
+	   nobody looks until the invoice is already sent. */
+	it.each([
+		["nothing", ""],
+		["whitespace", "   \n\t"],
+	])("refuses to build with %s for a stylesheet", (_label, styles) => {
+		expect(() => buildPrintDocument(draft(), styles)).toThrow(/stylesheet/i);
+	});
+
 	it("still produces a document for an empty draft", () => {
-		const html = buildPrintDocument(createEmptyDraft(new Date(2026, 7, 14)));
+		const html = buildPrintDocument(createEmptyDraft(new Date(2026, 7, 14)), STYLES);
 
 		expect(html).toContain("Your business");
 		expect(html).toContain("No items yet");

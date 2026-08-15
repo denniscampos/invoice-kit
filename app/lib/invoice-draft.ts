@@ -5,17 +5,18 @@ import {
 import { lineItemTotal } from "~/lib/money";
 import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
 
-export const DRAFT_VERSION = 1;
+const DRAFT_VERSION = 1;
 /* sessionStorage, not localStorage: the draft holds a client's name, address,
    and billed amount, and that should not outlive the tab on a shared machine.
    The version is in the key and in the payload; a mismatch discards. */
-export const DRAFT_STORAGE_KEY = "invoice-kit:draft:v1";
-export const DEFAULT_CURRENCY = "USD";
-export const DEFAULT_INVOICE_NUMBER = "INV-0001";
+const DRAFT_STORAGE_KEY = "invoice-kit:draft:v1";
+const DEFAULT_CURRENCY = "USD";
+const DEFAULT_INVOICE_NUMBER = "INV-0001";
 export const DUE_DATE_OFFSET_DAYS = 30;
 
 /* Local calendar date, not UTC. toISOString() would roll the date backwards for
-   anyone west of Greenwich after 4pm, which is exactly when invoices get sent. */
+   anyone west of Greenwich after 4pm, which is exactly when invoices get sent.
+   Exported only for the tests that pin exactly that. */
 export function toIsoDate(date: Date): string {
 	const year = date.getFullYear();
 	const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -74,7 +75,7 @@ function renumber(items: LineItem[]): LineItem[] {
 
 /* Quantity starts at 1 because that is what an added row almost always means;
    the rest is blank for the user to fill. */
-export function createLineItem(): LineItem {
+function createLineItem(): LineItem {
 	return {
 		id: crypto.randomUUID(),
 		position: 0,

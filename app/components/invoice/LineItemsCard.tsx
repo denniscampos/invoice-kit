@@ -27,9 +27,13 @@ import { formatMoney } from "~/lib/money";
 import type { InvoiceDraft, LineItem } from "~/types/invoice";
 
 /* Column widths come from the mockup's .items-head / .item-row grid. The header
-   and every row share them so the columns line up without a table. */
+   and every row share them so the columns line up without a table.
+
+   Only from `sm` up, though. Those fixed tracks add up to 396px before the
+   description column gets anything, which is wider than a phone: below that the
+   row stacks instead, with the numbers on a second line. */
 const GRID =
-	"grid grid-cols-[32px_1fr_78px_110px_104px_32px] items-center gap-2";
+	"grid grid-cols-[32px_1fr_32px] items-center gap-2 sm:grid-cols-[32px_1fr_auto_32px]";
 
 type LineItemsCardProps = {
 	draft: InvoiceDraft;
@@ -82,14 +86,18 @@ export function LineItemsCard({ draft, onChange }: LineItemsCardProps) {
 					</p>
 				) : (
 					<>
+						{/* Hidden where the row stacks: the columns it labels are not
+						    there, and each field carries its own label instead. */}
 						<div
-							className={`${GRID} px-1 text-xs font-medium text-muted-foreground`}
+							className={`${GRID} hidden px-1 text-xs font-medium text-muted-foreground sm:grid`}
 						>
 							<span />
 							<span>Description</span>
-							<span className="text-right">Qty</span>
-							<span className="text-right">Rate</span>
-							<span className="text-right">Amount</span>
+							<span className="grid grid-cols-[78px_110px_104px] gap-2">
+								<span className="text-right">Qty</span>
+								<span className="text-right">Rate</span>
+								<span className="text-right">Amount</span>
+							</span>
 							<span />
 						</div>
 

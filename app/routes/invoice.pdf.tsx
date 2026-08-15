@@ -78,12 +78,24 @@ export async function action({ request, context }: Route.ActionArgs) {
 	/* Before the body is read, let alone rendered: a caller sending floods of
 	   large payloads should be turned away at the door rather than after being
 	   measured. Rendering is what this protects, but reading is not free either. */
-	if (await isThrottled(env, request)) {
-		return fail(
-			429,
-			"Too many invoice downloads from here. Try again in a minute.",
-			{ "retry-after": String(THROTTLE_RETRY_AFTER_SECONDS) },
-		);
+	try {
+		if (await isThrottled(env, request)) {
+			return fail(
+				429,
+				"Too many invoice downloads from here. Try again in a minute.",
+				{ "retry-after": String(THROTTLE_RETRY_AFTER_SECONDS) },
+			);
+		}
+	} catch (error) {
+		console.error("Rate limiter unavailable", error);
+
+		/* Fail closed, deliberately. Waving traffic through would hand the
+		   account's daily browser allowance to whatever just broke, and that
+		   allowance cannot be refilled before tomorrow. A download that fails for
+		   a minute is the cheaper mistake. */
+		return fail(503, "Downloads are briefly unavailable. Try again shortly.", {
+			"retry-after": String(THROTTLE_RETRY_AFTER_SECONDS),
+		});
 	}
 
 	/* The declared length is a cheap first refusal, and it is not trusted: a

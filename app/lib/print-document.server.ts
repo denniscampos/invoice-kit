@@ -89,6 +89,15 @@ export function buildPrintDocument(
 	draft: InvoiceDraft,
 	styles: string = PRINT_STYLES,
 ): string {
+	/* Loud rather than silent. Without this, a build change that broke the
+	   stylesheet import would produce a structurally perfect, completely unstyled
+	   PDF, and the first person to notice would be whoever opened the file after
+	   sending it to a client. The route turns this into its existing 502 and logs
+	   the reason, which is a much better place to find out. */
+	if (!styles.trim()) {
+		throw new Error("The print stylesheet is empty: the PDF would be unstyled.");
+	}
+
 	const invoice = renderToStaticMarkup(createElement(InvoiceDocument, { draft }));
 	const title = escapeHtml(`Invoice ${draft.invoiceNumber}`.trim());
 

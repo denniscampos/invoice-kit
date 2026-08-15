@@ -22,12 +22,11 @@
 	   decision from the mockup, not an arbitrary screen size. */
 	--breakpoint-editor: 67.5rem;
 
-	/* app chrome */
-	--color-surface: #ffffff;
-	--color-surface-sunken: #f0f2f5;
-	--color-border-strong: #cdd2d9;
+	/* app chrome. Only what shadcn has no name for: --surface, --surface-sunken,
+	   --border-strong, and --accent-wash were the same values as its --card,
+	   --muted, --input, and --accent, and two names for one colour drift apart
+	   the first time someone retunes the palette through one of them. */
 	--color-faint: #949ca6;
-	--color-accent-wash: #eff4ff;
 
 	/* The invoice document. Deliberately independent of the chrome tokens:
 	   it is the PDF, so it stays paper white whatever the app around it does. */
