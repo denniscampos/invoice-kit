@@ -6,4 +6,6 @@ export default [
 	route("invoice/pdf", "routes/invoice.pdf.tsx"),
 	// Better Auth owns every path under here; the splat hands them all over.
 	route("api/auth/*", "routes/api.auth.$.tsx"),
+	route("sign-up", "routes/sign-up.tsx"),
+	route("sign-in", "routes/sign-in.tsx"),
 ] satisfies RouteConfig;

@@ -4,7 +4,8 @@
 # Generate one with:  openssl rand -base64 32
 BETTER_AUTH_SECRET="replace-me-with-a-generated-secret"
 
-# The origin the app is served from. Locally this is whatever port the dev
-# server prints; in production it is the deployed URL, set with
+# The origin the app is served from. Locally that is the port pinned in
+# vite.config.ts, which is deliberately fixed so this value cannot drift out of
+# sync. In production it is the deployed URL, set with
 # `wrangler secret put BETTER_AUTH_URL`.
-BETTER_AUTH_URL="http://localhost:5173"
+BETTER_AUTH_URL="http://localhost:5180"

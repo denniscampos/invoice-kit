@@ -77,7 +77,7 @@ account.
 
 - [ ] 6. **Accounts and auth** - sign up, sign in, sign out, and protected routes using Better Auth with D1
   - [x] 6a. **Database and auth server** - D1 created and bound, Better Auth configured against it, its schema migrated, its route handler mounted, no UI
-  - [ ] 6b. **Sign up and sign in** - the two pages, real sessions, back to the editor afterwards
+  - [x] 6b. **Sign up and sign in** - the two pages, real sessions, back to the editor afterwards
   - [ ] 6c. **Session in the app** - the app bar reflects who is signed in, sign out works, and a requireUser helper is ready for feature 7
 - [ ] 7. **Invoice persistence** - save invoices to D1, scoped to the signed-in user, and retrieve them later
 - [ ] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account

@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { MIN_PASSWORD_LENGTH } from "~/lib/auth-constants";
 
 /* The auth server. Better Auth owns accounts, sessions, password hashing, and
    its own four tables in D1; nothing in this project hashes a password or mints
@@ -21,6 +22,11 @@ export function createAuth(env: Env) {
 
 		emailAndPassword: {
 			enabled: true,
+
+			/* Stated rather than left to the library's default, because the sign up
+			   form's label and the message explaining a refusal both read the same
+			   constant. A rule the user is told about is a rule they can follow. */
+			minPasswordLength: MIN_PASSWORD_LENGTH,
 
 			/* Deferred for MVP, recorded in the feature 6a spec: verification needs
 			   an email sender, which would be the first third party key a self
