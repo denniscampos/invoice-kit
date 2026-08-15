@@ -9,15 +9,15 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
-import { FONT_ORIGINS, INTER_STYLESHEET_HREF } from "~/lib/fonts";
+import {
+	FONT_CSS_ORIGIN,
+	FONT_FILE_ORIGIN,
+	INTER_STYLESHEET_HREF,
+} from "~/lib/fonts";
 
 export const links: Route.LinksFunction = () => [
-	{ rel: "preconnect", href: FONT_ORIGINS[0] },
-	{
-		rel: "preconnect",
-		href: FONT_ORIGINS[1],
-		crossOrigin: "anonymous",
-	},
+	{ rel: "preconnect", href: FONT_CSS_ORIGIN },
+	{ rel: "preconnect", href: FONT_FILE_ORIGIN, crossOrigin: "anonymous" },
 	{ rel: "stylesheet", href: INTER_STYLESHEET_HREF },
 ];
 

@@ -8,7 +8,11 @@
 export const INTER_STYLESHEET_HREF =
 	"https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap";
 
-export const FONT_ORIGINS = [
-	"https://fonts.googleapis.com",
-	"https://fonts.gstatic.com",
-] as const;
+/* Two origins, named rather than ordered, because only one of them takes
+   `crossorigin` and nothing else records which. */
+export const FONT_CSS_ORIGIN = "https://fonts.googleapis.com";
+
+/* The font files themselves. This is the preconnect that needs `crossorigin`:
+   fonts are fetched in CORS mode, and a preconnect without it opens a
+   connection the real request cannot reuse. */
+export const FONT_FILE_ORIGIN = "https://fonts.gstatic.com";

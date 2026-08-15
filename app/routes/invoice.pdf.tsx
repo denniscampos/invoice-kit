@@ -1,6 +1,7 @@
 import type { Route } from "./+types/invoice.pdf";
 import { parseDraft } from "~/lib/invoice-draft";
 import { buildPrintDocument, MAX_DRAFT_BYTES } from "~/lib/print-document.server";
+import { readBoundedText } from "~/lib/request.server";
 
 /* The account free render endpoint. It takes an invoice draft as JSON and
    returns the document to print. Feature 5b keeps this route, its guards, and
@@ -41,8 +42,11 @@ export async function action({ request }: Route.ActionArgs) {
 		return fail(413, "That invoice is too large to render.");
 	}
 
-	const body = await request.text();
-	if (new TextEncoder().encode(body).length > MAX_DRAFT_BYTES) {
+	/* The real guard: the body is counted as it arrives and abandoned the moment
+	   it passes the cap, so an oversized request is never held in memory whether
+	   or not it declared its length. */
+	const body = await readBoundedText(request, MAX_DRAFT_BYTES);
+	if (body === null) {
 		return fail(413, "That invoice is too large to render.");
 	}
 

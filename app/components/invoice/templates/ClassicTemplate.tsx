@@ -20,9 +20,13 @@ type InvoiceTemplateProps = {
 const FIGURES = "font-sans tabular-nums";
 
 /* Serif, like the rest of the document's text. FIGURES above is the single
-   deliberate exception, and it is a legibility fix rather than a taste call. */
-const LABEL =
-	"text-[10px] font-semibold uppercase tracking-[0.1em] text-paper-muted";
+   deliberate exception, and it is a legibility fix rather than a taste call.
+
+   No colour here on purpose. Composing one in and overriding it at a use site
+   does not work: two utilities setting the same property are decided by their
+   order in the stylesheet, not by their order in the class attribute, so the
+   override silently loses. Each use states the colour it wants. */
+const LABEL = "text-[10px] font-semibold uppercase tracking-[0.1em]";
 
 export function ClassicTemplate({ draft }: InvoiceTemplateProps) {
 	return (
@@ -73,7 +77,7 @@ function MetaBand({ draft }: InvoiceTemplateProps) {
 		<dl className="grid grid-cols-3 gap-6 border-y border-paper-rule py-3">
 			{entries.map((entry) => (
 				<div key={entry.label}>
-					<dt className={LABEL}>{entry.label}</dt>
+					<dt className={`${LABEL} text-paper-muted`}>{entry.label}</dt>
 					<dd
 						className={`mt-0.5 break-words text-sm font-semibold ${FIGURES}`}
 					>
@@ -175,7 +179,7 @@ function FooterBlock({ heading, body }: { heading: string; body: string }) {
 
 	return (
 		<div>
-			<h3 className={`${LABEL} mb-1.5`}>{heading}</h3>
+			<h3 className={`${LABEL} mb-1.5 text-paper-muted`}>{heading}</h3>
 			{/* The draft holds newlines from a textarea; keep them. */}
 			<p className="m-0 whitespace-pre-line break-words leading-[1.6]">{body}</p>
 		</div>
@@ -196,7 +200,7 @@ function PartyBlock({
 
 	return (
 		<div>
-			<h3 className={`${LABEL} mb-2`}>{heading}</h3>
+			<h3 className={`${LABEL} mb-2 text-paper-muted`}>{heading}</h3>
 			<address className="break-words text-sm not-italic leading-[1.7] text-paper-muted">
 				<b
 					className={`mb-0.5 block text-[17px] font-semibold ${

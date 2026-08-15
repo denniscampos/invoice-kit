@@ -46,29 +46,6 @@ judgment call, same fix. Updated again the same day: the F-20 repair gave
 `PartyAddressLine` a real importer in `CompactTemplate.tsx`, so it leaves this
 list too. The original six from feature 1 and 2 are what remain.
 
-### F-05 [P3] fixed - A tampered draft with a partial party object breaks its inputs
-
-**File:** app/lib/invoice-draft.ts:52
-**Found:** 2026-08-13 by /audit (scope: current)
-**Why it matters:** `isStoredDraft` checks that `billFrom` and `billTo` are
-objects but not that they hold the nine expected string fields. A stored draft
-whose party object is missing keys passes the guard, and `value[field]` then
-returns `undefined`, which flips a controlled input to uncontrolled and logs a
-React warning. Only reachable by editing sessionStorage by hand, since the app
-always writes whole drafts, so the risk is low.
-**Suggested fix:** merge the parsed draft over `createEmptyDraft()` (including
-both party objects) before returning it, so missing keys fall back to empty
-strings.
-**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a. `isStoredDraft`
-is gone, replaced by `parseDraft`, which checks all nine string fields of both
-party objects and discards the draft when any is missing rather than merging
-defaults into it. Discarding beat merging because a half-real invoice that looks
-complete is worse than an empty editor.
-
-Verified in the browser with the finding's own repro, a stored draft whose
-`billFrom` is `{ name: "Acme Studio" }`: the editor opens on a clean empty draft,
-every input is controlled, and the console is silent.
-
 ### F-06 [P3] open - CSS-only packages sit in runtime dependencies
 
 **File:** package.json:17
@@ -118,29 +95,6 @@ and let the caller keep the previous total, matching how the parsers already
 treat input they cannot represent. Alternatively bound `parseQuantity` to a
 sensible maximum so the product can never overflow.
 **Resolution:**
-
-### F-12 [P3] fixed - Stored line items are not validated field by field
-
-**File:** app/lib/invoice-draft.ts:62
-**Found:** 2026-08-14 by /audit (scope: current)
-**Why it matters:** `isStoredDraft` checks only that `lineItems` is an array, so
-a stored draft whose items lack `total` or `rate` passes the guard.
-`formatMinorUnits(undefined)` then renders `NaN.NaN` in the Amount column, and
-`invoiceSubtotal` returns `NaN` for the whole invoice. This is the same tampering
-path as F-05 and needs the same answer; it is recorded separately because it is a
-new surface that feature 2 introduced, not a restatement of the party-object gap.
-**Suggested fix:** whatever fixes F-05 should cover line items too: validate the
-numeric fields per item and drop the stored draft when they do not hold, rather
-than merging defaults into a half-real invoice.
-**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a. `parseDraft`
-validates every line item field by field: `id`, `name`, and `description` must be
-strings, `quantity` finite, and `position`, `rate`, and `total` integers. NaN and
-Infinity are rejected explicitly, since both pass a `typeof` check and then print
-as `NaN` on the invoice, and a fractional cent is rejected as corruption of the
-minor-units rule.
-
-Verified with a stored line item holding only `id`, `position`, and `name`: the
-draft is discarded, the document renders no `NaN`, and the console is silent.
 
 ### F-15 [P3] open - A European thousands dot reads as a decimal point
 
@@ -200,9 +154,12 @@ breakpoint, so this is a minimum width inside the stacked column, not the grid.
 Predates feature 4: the same 526px and 502px were measured with feature 4's work
 stashed, with and without the template switcher present, so the switcher is a
 passenger rather than the cause.
-**Suggested fix:** find the child that will not go below ~500px (the line item
-row's fixed track widths in `LineItemsCard` are the first candidate) and let it
-collapse or scroll below the `editor` breakpoint. `min-w-0` on the grid items is
+**Suggested fix:** the cause was located on 2026-08-14 by a later /audit pass:
+`LineItemsCard.tsx:31` sets `grid-cols-[32px_1fr_78px_110px_104px_32px]`, whose
+five fixed tracks and five 8px gaps come to 396px before the description column
+gets anything, and the card and page padding carry it the rest of the way to the
+measured 502px. Give the row a narrow-screen layout below the `editor`
+breakpoint, or let the fixed tracks shrink there. `min-w-0` on the grid items is
 usually the missing half of the fix, since grid children default to
 `min-width: auto` and refuse to shrink past their content.
 
@@ -231,53 +188,22 @@ separate templates.
 
 **Resolution:**
 
-### F-24 [P3] fixed - An unrecognized templateId survives in the stored draft
+### F-27 [P3] open - An unstyled print document would ship silently
 
-**File:** app/lib/invoice-draft.ts:153
-**Found:** 2026-08-14 by /audit (scope: current)
-**Why it matters:** `resolveTemplateId` protects rendering, so a garbage
-`templateId` shows the default template with the default segment pressed, which
-was verified in the browser with `"nope"`. The stored value itself is left alone,
-though: `isStoredDraft` does not look at `templateId`, and the draft is written
-back verbatim. It is harmless while the draft only lives in `sessionStorage`, but
-feature 7 maps this draft onto the D1 `Invoice` row, so today's tampered value is
-tomorrow's stored column, and feature 5 posts the same draft to the PDF endpoint.
-**Suggested fix:** normalize on the way in rather than only at render, by running
-`resolveTemplateId` over the parsed draft inside `readStoredDraft`. That keeps one
-rule in one place and pairs naturally with the same fix for F-05 and F-12, which
-are the other two halves of validating a stored draft field by field.
-
-**Resolution:** Fixed 2026-08-14 by /implement, during feature 5a, by the route
-the finding recommended: `parseDraft` runs `resolveTemplateId` over the incoming
-value, so normalization happens on the way in rather than only at render, and
-`readStoredDraft` now returns a draft whose `templateId` is always renderable.
-It is the one field normalized rather than rejected, because the registry already
-answers for it.
-
-Verified with `templateId: "nope"` in sessionStorage: the restored draft carries
-`minimal`, the Minimal segment is pressed, and a later write cannot persist the
-tampered value back.
-
-### F-25 [P3] open - Classic's table head asks for ink and silently renders muted
-
-**File:** app/components/invoice/templates/ClassicTemplate.tsx:88
-**Found:** 2026-08-14 by /audit (scope: current)
-**Why it matters:** `HEAD_CELL` is built as `${LABEL} px-2 py-2.5 text-paper-ink`,
-and `LABEL` already ends in `text-paper-muted`. Two utilities set the same
-property, so the winner is decided by their order in the generated stylesheet,
-not by their order in the class attribute, and muted wins. Measured on the
-rendered document: the head cell computes to `rgb(92, 102, 114)` (paper-muted)
-while the paper's ink is `rgb(20, 24, 29)`. The spec asks for a `paper-rule` band
-with ink text, so the band is lower contrast than intended against its own grey
-background, and the `text-paper-ink` in the source is a no-op that reads as
-working. Predates the F-21 repair, which changed the face in `LABEL` and not the
-colour. The `${CELL} text-paper-muted` strings in all three templates are the
-benign version of the same shape: `CELL` carries no colour, so nothing is
-shadowed there.
-**Suggested fix:** stop composing a colour into a constant that already sets one.
-Drop `text-paper-muted` from `LABEL` and let each site state its own colour, which
-also makes the muted default explicit at the four places that want it. A
-`twMerge`-style helper would fix the precedence too, but the project has no such
-wrapper today and one utility conflict does not justify introducing one.
+**File:** app/lib/print-styles.ts:11
+**Found:** 2026-08-14 by /audit (scope: full)
+**Why it matters:** `PRINT_STYLES` is whatever `?inline` hands back, and under
+Vitest that is an empty string because no Tailwind plugin runs there. The
+production build was verified to carry the compiled CSS, so this is correct
+today, but nothing checks it: if a config change ever broke the plugin chain, the
+endpoint would keep returning 200 with a structurally perfect, completely
+unstyled document, and the first person to notice would be whoever opened the
+PDF. The failure is silent in exactly the artifact nobody re-reads before sending
+it to a client.
+**Suggested fix:** assert it once where it is cheap. A build-time check that the
+emitted server bundle contains a known compiled utility is the honest version,
+since the unit suite cannot see the real string. A runtime guard in the route
+that refuses to render with empty styles is the smaller version and still beats
+silence.
 
 **Resolution:**

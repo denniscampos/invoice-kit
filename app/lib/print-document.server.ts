@@ -1,7 +1,11 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { InvoiceDocument } from "~/components/invoice/templates";
-import { INTER_STYLESHEET_HREF, FONT_ORIGINS } from "~/lib/fonts";
+import {
+	FONT_CSS_ORIGIN,
+	FONT_FILE_ORIGIN,
+	INTER_STYLESHEET_HREF,
+} from "~/lib/fonts";
 import { PRINT_STYLES } from "~/lib/print-styles";
 import type { InvoiceDraft } from "~/types/invoice";
 
@@ -71,8 +75,8 @@ export function buildPrintDocument(
 <head>
 <meta charset="utf-8" />
 <title>${title}</title>
-<link rel="preconnect" href="${FONT_ORIGINS[0]}" />
-<link rel="preconnect" href="${FONT_ORIGINS[1]}" crossorigin />
+<link rel="preconnect" href="${FONT_CSS_ORIGIN}" />
+<link rel="preconnect" href="${FONT_FILE_ORIGIN}" crossorigin />
 <link rel="stylesheet" href="${escapeHtml(INTER_STYLESHEET_HREF)}" />
 <style>${styles}${PAGE_STYLES}</style>
 </head>

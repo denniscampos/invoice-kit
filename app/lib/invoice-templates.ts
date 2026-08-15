@@ -19,10 +19,11 @@ export type InvoiceTemplateId = (typeof INVOICE_TEMPLATES)[number]["id"];
 /* What an anonymous draft opens in, and where anything unrecognized lands. */
 export const DEFAULT_TEMPLATE_ID: InvoiceTemplateId = "minimal";
 
-/* Takes unknown and never throws. Its input is a sessionStorage value today and
-   a posted request body in feature 5, and isStoredDraft does not check
-   templateId at all, so this is the only thing standing between a tampered
-   draft and a render. */
+/* Takes unknown and never throws, because it is called wherever an untrusted
+   draft enters: parseDraft runs it on the way in, so a stored or posted draft
+   carries a renderable id from the start, and the registry runs it again at
+   render for anything that reaches a template by another path. Two callers, one
+   rule, and neither has to trust the other. */
 export function resolveTemplateId(value: unknown): InvoiceTemplateId {
 	const match = INVOICE_TEMPLATES.find((template) => template.id === value);
 	return match ? match.id : DEFAULT_TEMPLATE_ID;
