@@ -295,26 +295,47 @@ export function writeStoredDraft(draft: InvoiceDraft): void {
 	}
 }
 
-/* The id of the invoice this tab last saved, kept beside the draft rather than
-   inside it. Inside would change `InvoiceDraft`, which feature 8 reads and the
-   PDF endpoint validates, for something neither of them cares about.
+/* What this tab last saved: the invoice's id, and the number it was saved
+   under.
 
+   The number is what makes the id safe to reuse. On its own the id is not "the
+   invoice I am editing", it is "the first invoice I ever saved in this tab", and
+   aiming a save at it after the user has moved on to their next invoice
+   overwrites the earlier one (F-41). Pairing them lets the editor ask a better
+   question: is this still the same invoice?
+
+   Kept beside the draft rather than inside it, because `InvoiceDraft` is read by
+   feature 8 and validated by the PDF endpoint, and neither cares about this.
    sessionStorage for the same reason the draft uses it: it should not outlive
-   the tab. A stale id is harmless anyway, because the server scopes every write
-   by the session's user and creates a new invoice when the id is not theirs. */
-const SAVED_ID_STORAGE_KEY = "invoice-kit:saved-id:v1";
+   the tab. */
+const SAVED_INVOICE_STORAGE_KEY = "invoice-kit:saved-invoice:v1";
 
-export function readSavedInvoiceId(): string | null {
+export type SavedInvoiceRef = { id: string; invoiceNumber: string };
+
+export function readSavedInvoiceRef(): SavedInvoiceRef | null {
 	try {
-		return window.sessionStorage.getItem(SAVED_ID_STORAGE_KEY);
+		const raw = window.sessionStorage.getItem(SAVED_INVOICE_STORAGE_KEY);
+		if (!raw) return null;
+
+		const parsed: unknown = JSON.parse(raw);
+		if (typeof parsed !== "object" || parsed === null) return null;
+
+		const { id, invoiceNumber } = parsed as Record<string, unknown>;
+
+		return typeof id === "string" && typeof invoiceNumber === "string"
+			? { id, invoiceNumber }
+			: null;
 	} catch {
 		return null;
 	}
 }
 
-export function writeSavedInvoiceId(id: string): void {
+export function writeSavedInvoiceRef(ref: SavedInvoiceRef): void {
 	try {
-		window.sessionStorage.setItem(SAVED_ID_STORAGE_KEY, id);
+		window.sessionStorage.setItem(
+			SAVED_INVOICE_STORAGE_KEY,
+			JSON.stringify(ref),
+		);
 	} catch {
 		// Same trade as the draft: losing the convenience beats showing an error.
 	}

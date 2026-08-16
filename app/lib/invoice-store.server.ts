@@ -96,10 +96,6 @@ function pricedItems(items: LineItem[]): LineItem[] {
 	}));
 }
 
-export function invoiceSubtotalOf(items: LineItem[]): number {
-	return pricedItems(items).reduce((sum, item) => sum + item.total, 0);
-}
-
 type RowPair = { invoice: InvoiceRow; lineItems: LineItemRow[] };
 
 export function draftToRows(
@@ -345,15 +341,38 @@ export async function getInvoice(
 	return toSavedInvoice(invoice, results);
 }
 
-/* Every invoice number this user has already used, for the sequence to count on
+/* The highest sequence number this user has used, for the next one to count on
    from. Scoped like everything else here; a number belonging to somebody else is
-   none of this user's business and would not collide with theirs anyway. */
+   none of this user's business and would not collide with theirs anyway.
+
+   One row, not the whole column. This runs on every editor load and again after
+   every save, and the number of invoices a user has is the number this app
+   exists to grow, so reading all of them to look at one was a cost that only
+   went up (F-43).
+
+   Ordered by length first: as strings, 'INV-9999' sorts above 'INV-10000', and
+   the longer number is the larger one once the sequence outgrows its padding.
+
+   A handful rather than exactly one, and `glob` rather than `like`. Sorting is
+   by string, so any INV- value made of letters outranks the real numbers at the
+   same width: INV-DRAFT beats INV-0002. Asking for a single row meant that one
+   could be unparseable, leaving `nextInvoiceNumber` to fall back to INV-0001 and
+   suggest a number the user already had (F-44). The glob keeps out anything with
+   no digit after the dash, and the small limit covers what it cannot express,
+   like INV-12AB, by letting `nextInvoiceNumber` skip it the way it always has.
+
+   Still bounded, which is the whole point of not reading the column (F-43). */
 export async function listInvoiceNumbers(
 	db: D1Database,
 	userId: string,
 ): Promise<string[]> {
 	const { results } = await db
-		.prepare(`select invoiceNumber from invoice where userId = ?1`)
+		.prepare(
+			`select invoiceNumber from invoice
+			 where userId = ?1 and invoiceNumber glob 'INV-[0-9]*'
+			 order by length(invoiceNumber) desc, invoiceNumber desc
+			 limit 10`,
+		)
 		.bind(userId)
 		.all<{ invoiceNumber: string }>();
 

@@ -127,3 +127,78 @@ whether it is load-bearing before touching it.
 `worker-configuration.d.ts` stops declaring it too.
 
 **Resolution:**
+
+### F-43 [P3] fixed - Every page load reads all of a user's invoice numbers
+
+**File:** app/routes/editor.tsx:45
+**Found:** 2026-08-16 by /audit (scope: full)
+**Why it matters:** The editor's loader calls `listInvoiceNumbers`, which selects
+every invoice number the user has, on every navigation and again after every
+save, to compute one suggestion. The suggestion is then usually discarded,
+because a restored draft keeps its own number and only a brand new invoice uses
+it. The cost grows with the number of invoices a user has, which is the number
+this app exists to grow, and it is paid on the app's busiest route.
+
+Nothing is wrong today, with one invoice in the database. It is filed now because
+the shape is unbounded rather than because it currently hurts.
+**Suggested fix:** ask the database for the answer instead of the raw material:
+`select invoiceNumber from invoice where userId = ?1 and invoiceNumber like
+'INV-%' order by length(invoiceNumber) desc, invoiceNumber desc limit 1`, and
+hand that one value to `nextInvoiceNumber`. The function already accepts a list,
+so it needs no change.
+
+**Resolution:** Fixed 2026-08-16 by /implement. `listInvoiceNumbers` now asks for
+the single highest `INV-` number rather than the whole column, ordered by length
+then value so a longer number wins once the sequence outgrows its padding.
+
+Proven against the local database: with INV-0001, INV-0002, INV-9999, INV-10000,
+and 2026-04 present, the query returns INV-10000 and the editor suggests
+INV-10001. With only 2026-04 present the query returns nothing and the editor
+suggests INV-0001, so a user numbering invoices their own way still starts the
+sequence correctly.
+
+**Re-reviewed 2026-08-16 by /audit (scope: current): still `fixed`, not closed.**
+The unbounded read is genuinely gone, but the repair introduced F-44 below, so
+the two want re-reviewing together once that is dealt with.
+
+### F-44 [P2] fixed - The editor can suggest an invoice number it will then refuse
+
+**File:** app/lib/invoice-store.server.ts:110
+**Found:** 2026-08-16 by /audit (scope: current)
+**Why it matters:** Introduced by the F-43 repair. Narrowing the query to one row
+means the row it picks has to be a sequence number, and `like 'INV-%'` does not
+promise that. Sorting is by length then string, so any `INV-` value made of
+letters outranks the real numbers at the same width: `INV-DRAFT` beats
+`INV-0002`. `nextInvoiceNumber` then cannot parse what it was handed, falls back
+to `INV-0001`, and hands the user a number they already have.
+
+Reproduced against the local database and then in the browser. A user holding
+`INV-0001`, `INV-0002`, and `INV-DRAFT` is shown `INV-0001` in a fresh editor,
+and pressing Save answers "You already have an invoice numbered INV-0001. Change
+the number and save again." The fresh editor is unusable until they retype the
+number by hand.
+
+Nothing is lost and nothing is overwritten, which is why this is P2 rather than
+higher. But it is the primary flow, and it triggers on an invoice number a user
+is perfectly entitled to type: the overview says the number stays editable and
+the sequence is only a suggestion.
+
+Before F-43 this could not happen, because every number was passed to
+`nextInvoiceNumber` and the unparseable ones were skipped.
+**Suggested fix:** stop asking the database for exactly one candidate. Narrowing
+with `glob 'INV-[0-9]*'` removes the obvious cases but not `INV-12AB`, so pair it
+with a small `limit` (ten is plenty) and let `nextInvoiceNumber` do the filtering
+it already does. The query stays bounded, which is all F-43 asked for.
+
+**Resolution:** Fixed 2026-08-16 by /implement, in the same fix that caused it.
+The query now matches with `glob 'INV-[0-9]*'`, which keeps out anything with no
+digit after the dash, and takes ten rows rather than one so `nextInvoiceNumber`
+can skip whatever the glob cannot express, like INV-12AB. It stays bounded, which
+is all F-43 asked for.
+
+Proven against the local database and then in the browser. A user holding
+INV-0001, INV-0002, and INV-DRAFT now gets INV-0002 and INV-0001 from the query,
+is suggested INV-0003 in a fresh editor, and saving it succeeds with no error.
+INV-10000 still outranks INV-9999, and a user whose only invoice is 2026-04 still
+starts at INV-0001.
+

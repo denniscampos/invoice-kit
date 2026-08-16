@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useFetcher } from "react-router";
 import { Button } from "~/components/ui/button";
-import { readSavedInvoiceId, writeSavedInvoiceId } from "~/lib/invoice-draft";
+import {
+	readSavedInvoiceRef,
+	type SavedInvoiceRef,
+	writeSavedInvoiceRef,
+} from "~/lib/invoice-draft";
 import type { SaveResult } from "~/lib/invoice-save.server";
 import type { InvoiceDraft } from "~/types/invoice";
 
@@ -18,22 +22,27 @@ export function SaveButton({ draft }: { draft: InvoiceDraft }) {
 	const fetcher = useFetcher<SaveResult>({ key: SAVE_FETCHER_KEY });
 	const saving = fetcher.state !== "idle";
 
-	/* The id of what we last saved, so pressing Save twice updates one invoice
-	   instead of making two. It is a hint, not a permission: the server scopes
-	   every write by the session's user and simply creates a new invoice if this
-	   id turns out not to be theirs. */
-	const [invoiceId, setInvoiceId] = useState<string | null>(null);
+	/* What this tab last saved, so pressing Save twice updates one invoice
+	   instead of making two. A hint, not a permission: the server scopes every
+	   write by the session's user and creates a new invoice if this id turns out
+	   not to be theirs. */
+	const [saved, setSaved] = useState<SavedInvoiceRef | null>(null);
 	const [savedNumber, setSavedNumber] = useState<string | null>(null);
 
 	useEffect(() => {
-		setInvoiceId(readSavedInvoiceId());
+		setSaved(readSavedInvoiceRef());
 	}, []);
 
 	useEffect(() => {
 		if (fetcher.data?.ok) {
-			setInvoiceId(fetcher.data.id);
-			setSavedNumber(fetcher.data.invoiceNumber);
-			writeSavedInvoiceId(fetcher.data.id);
+			const ref = {
+				id: fetcher.data.id,
+				invoiceNumber: fetcher.data.invoiceNumber,
+			};
+
+			setSaved(ref);
+			setSavedNumber(ref.invoiceNumber);
+			writeSavedInvoiceRef(ref);
 		}
 	}, [fetcher.data]);
 
@@ -43,8 +52,22 @@ export function SaveButton({ draft }: { draft: InvoiceDraft }) {
 	}, [draft]);
 
 	function save() {
+		/* The id goes only while the number still matches the one it was saved
+		   under. A changed number means the user has moved on to their next
+		   invoice, and sending the id would aim this save at the previous one and
+		   overwrite it, which is exactly what F-41 was.
+
+		   The trade: correcting the number of an existing invoice produces a
+		   second invoice rather than a renamed one. That is a duplicate the user
+		   can see and delete; the alternative silently destroyed an invoice. */
+		const sameInvoice =
+			saved !== null && saved.invoiceNumber === draft.invoiceNumber.trim();
+
 		fetcher.submit(
-			{ draft: JSON.stringify(draft), invoiceId: invoiceId ?? "" },
+			{
+				draft: JSON.stringify(draft),
+				invoiceId: sameInvoice ? saved.id : "",
+			},
 			{ method: "post" },
 		);
 	}
