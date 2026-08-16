@@ -7,6 +7,7 @@ export default [
 	// Better Auth owns every path under here; the splat hands them all over.
 	route("api/auth/*", "routes/api.auth.$.tsx"),
 	route("invoices", "routes/invoices.tsx"),
+	route("invoices/:id", "routes/invoices.$id.tsx"),
 	route("sign-up", "routes/sign-up.tsx"),
 	route("sign-in", "routes/sign-in.tsx"),
 	// Action only: a GET that ends a session is a link anything can fire.

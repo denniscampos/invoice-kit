@@ -4,6 +4,7 @@ import {
 	invoiceNumberTaken,
 	updateInvoice,
 } from "~/lib/invoice-store.server";
+import type { InvoiceDraft } from "~/types/invoice";
 
 /* What the editor gets back when it presses Save. A discriminated union rather
    than a nullable id, so a caller cannot read `id` off a failure. */
@@ -27,49 +28,50 @@ function isDuplicateNumber(error: unknown): boolean {
 	);
 }
 
-/* Saves what the editor posted, as this user.
+/* The refusals both saves share, asked in the same order: is this a draft at
+   all, does it carry a number, and is that number still free.
 
-   The id is a hint from the browser, not an authorisation: it says "I think I
-   already saved this one". Every path through here is scoped by `userId`, so the
-   worst a wrong id can do is fail to match and fall through to a create. */
-export async function saveDraft(
+   `exceptId` is the invoice being written, which cannot clash with itself. */
+async function checkDraft(
 	db: D1Database,
 	userId: string,
 	payload: unknown,
-	knownId: string | null,
-): Promise<SaveResult> {
+	exceptId?: string,
+): Promise<{ draft: InvoiceDraft } | { error: string }> {
 	const draft = parseDraft(payload);
 	if (!draft) {
-		return { ok: false, error: "That invoice could not be saved. Please check the form and try again." };
+		return { error: "That invoice could not be saved. Please check the form and try again." };
 	}
 
 	const invoiceNumber = draft.invoiceNumber.trim();
 	if (!invoiceNumber) {
-		return { ok: false, error: "Give the invoice a number before saving it." };
+		return { error: "Give the invoice a number before saving it." };
 	}
 
-	if (await invoiceNumberTaken(db, userId, invoiceNumber, knownId ?? undefined)) {
-		return { ok: false, error: duplicateNumberMessage(invoiceNumber) };
+	if (await invoiceNumberTaken(db, userId, invoiceNumber, exceptId)) {
+		return { error: duplicateNumberMessage(invoiceNumber) };
 	}
+
+	return { draft };
+}
+
+/* Saves a new invoice for this user.
+
+   Create only. The editor at `/` is where an invoice that does not exist yet is
+   written, and once it does the browser moves to its own URL, where
+   `saveDraftEdit` takes over. There is no id to pass in and nothing to decide
+   between creating and updating. */
+export async function saveDraft(
+	db: D1Database,
+	userId: string,
+	payload: unknown,
+): Promise<SaveResult> {
+	const checked = await checkDraft(db, userId, payload);
+	if ("error" in checked) return { ok: false, error: checked.error };
+
+	const { draft } = checked;
 
 	try {
-		if (knownId) {
-			const updated = await updateInvoice(db, userId, knownId, draft);
-
-			/* Null means the id is not this user's, or no longer exists: a stale
-			   id left in the tab after signing out, or an invoice deleted
-			   elsewhere. Creating is the right answer, and it cannot touch anyone
-			   else's row because the update never matched one. */
-			if (updated) {
-				return {
-					ok: true,
-					id: updated.id,
-					invoiceNumber: updated.draft.invoiceNumber,
-					savedAt: updated.updatedAt,
-				};
-			}
-		}
-
 		const created = await createInvoice(db, userId, draft);
 
 		return {
@@ -83,7 +85,51 @@ export async function saveDraft(
 		   The index is what actually guarantees uniqueness, so its refusal gets
 		   the same sentence rather than a generic failure. */
 		if (isDuplicateNumber(error)) {
-			return { ok: false, error: duplicateNumberMessage(invoiceNumber) };
+			return {
+				ok: false,
+				error: duplicateNumberMessage(draft.invoiceNumber.trim()),
+			};
+		}
+
+		throw error;
+	}
+}
+
+/* Saves an edit to an invoice that already exists, identified by its id.
+
+   Update only, and that is the whole difference from `saveDraft`. Null means
+   there is no such invoice for this user, which the route answers with the same
+   404 its loader gives. Falling through to a create here, the way `saveDraft`
+   does for an id that was only ever a hint from sessionStorage, would leave the
+   browser sitting on a URL that names nothing while being told the save worked. */
+export async function saveDraftEdit(
+	db: D1Database,
+	userId: string,
+	id: string,
+	payload: unknown,
+): Promise<SaveResult | null> {
+	const checked = await checkDraft(db, userId, payload, id);
+	if ("error" in checked) return { ok: false, error: checked.error };
+
+	const { draft } = checked;
+
+	try {
+		const updated = await updateInvoice(db, userId, id, draft);
+		if (!updated) return null;
+
+		return {
+			ok: true,
+			id: updated.id,
+			invoiceNumber: updated.draft.invoiceNumber,
+			savedAt: updated.updatedAt,
+		};
+	} catch (error) {
+		// Same race as above: the check can lose to another tab, the index cannot.
+		if (isDuplicateNumber(error)) {
+			return {
+				ok: false,
+				error: duplicateNumberMessage(draft.invoiceNumber.trim()),
+			};
 		}
 
 		throw error;

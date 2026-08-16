@@ -49,7 +49,9 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 			    consequence is that a phone cannot reach the dashboard from the
 			    editor, which needs a real answer rather than a squeezed label. */}
 			<nav className="ml-1 hidden gap-0.5 sm:ml-4 sm:flex sm:gap-1">
-				<NavItem to="/">Editor</NavItem>
+				<NavItem to="/" end>
+					Editor
+				</NavItem>
 				{/* Only for someone who has invoices to look at. A nav entry that
 				    exists to bounce a visitor to sign-in is the sign-up wall this
 				    app deliberately does not have. */}
@@ -63,13 +65,25 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 
 /* NavLink rather than Link plus a comparison: it works out `isActive` from the
    router's own matching and writes `aria-current="page"` itself, so the marker
-   cannot disagree with the page actually being shown. `end` because without it
-   "/" matches every route and the Editor tab would look current everywhere. */
-function NavItem({ to, children }: { to: string; children: ReactNode }) {
+   cannot disagree with the page actually being shown.
+
+   `end` is per entry rather than always on. Editor needs it, or "/" matches
+   every route and looks current everywhere. Invoices must not have it, or
+   opening an invoice at /invoices/:id marks nothing at all, and a user deep in a
+   section should be able to see which section that is. */
+function NavItem({
+	to,
+	end,
+	children,
+}: {
+	to: string;
+	end?: boolean;
+	children: ReactNode;
+}) {
 	return (
 		<NavLink
 			to={to}
-			end
+			end={end}
 			className={({ isActive }) =>
 				cn(
 					"rounded-md px-2 py-1.5 font-medium sm:px-3",

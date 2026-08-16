@@ -2,10 +2,7 @@ import { useEffect, useState } from "react";
 import type { Route } from "./+types/editor";
 import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
-import { InvoiceDetailsFields } from "~/components/invoice/InvoiceDetailsFields";
-import { LineItemsCard } from "~/components/invoice/LineItemsCard";
-import { PartyFields } from "~/components/invoice/PartyFields";
-import { PreviewPane } from "~/components/invoice/PreviewPane";
+import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
 import { SaveNote } from "~/components/invoice/SaveNote";
 import { SessionActions } from "~/components/SessionActions";
@@ -14,15 +11,13 @@ import { getUser, requireUser } from "~/lib/auth.server";
 import { saveDraft } from "~/lib/invoice-save.server";
 import { nextInvoiceNumber } from "~/lib/invoice-number";
 import { listInvoiceNumbers } from "~/lib/invoice-store.server";
-import { Card, CardContent, CardHeader, CardTitle } from "~/components/ui/card";
-import { Textarea } from "~/components/ui/textarea";
 import {
 	createEmptyDraft,
 	readStoredDraft,
 	todaysDates,
 	writeStoredDraft,
 } from "~/lib/invoice-draft";
-import type { InvoiceDraft, Party } from "~/types/invoice";
+import type { InvoiceDraft } from "~/types/invoice";
 
 export function meta({}: Route.MetaArgs) {
 	return [
@@ -55,7 +50,6 @@ export async function action({ request, context }: Route.ActionArgs) {
 	const user = await requireUser(request, env);
 
 	const form = await request.formData();
-	const knownId = String(form.get("invoiceId") ?? "") || null;
 
 	let payload: unknown;
 	try {
@@ -64,7 +58,10 @@ export async function action({ request, context }: Route.ActionArgs) {
 		return { ok: false as const, error: "That invoice could not be read. Please try again." };
 	}
 
-	return saveDraft(env.DB, user.id, payload, knownId);
+	/* Always a create. The invoice this makes gets its own URL and the browser
+	   goes there, so a second save is an edit at `/invoices/:id` rather than
+	   another attempt to work out what this one is. */
+	return saveDraft(env.DB, user.id, payload);
 }
 
 export default function Editor({ loaderData }: Route.ComponentProps) {
@@ -118,10 +115,6 @@ export default function Editor({ loaderData }: Route.ComponentProps) {
 		setDraft((current) => ({ ...current, ...patch }));
 	}
 
-	function setParty(key: "billFrom" | "billTo") {
-		return (party: Party) => patchDraft({ [key]: party });
-	}
-
 	return (
 		<>
 			<AppBar
@@ -133,49 +126,11 @@ export default function Editor({ loaderData }: Route.ComponentProps) {
 					</div>
 				}
 			/>
-			<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6">
-				<div className="flex min-w-0 flex-col gap-4">
-					{signedIn ? <SaveError /> : <SaveNote />}
-					<InvoiceDetailsFields draft={draft} onChange={patchDraft} />
-					<LineItemsCard draft={draft} onChange={patchDraft} />
-					<PartyFields
-						title="Bill from"
-						idPrefix="bill-from"
-						value={draft.billFrom}
-						onChange={setParty("billFrom")}
-					/>
-					<PartyFields
-						title="Bill to"
-						idPrefix="bill-to"
-						value={draft.billTo}
-						onChange={setParty("billTo")}
-					/>
-					<Card>
-						<CardHeader>
-							<CardTitle>Notes</CardTitle>
-						</CardHeader>
-						<CardContent>
-							<Textarea
-								id="notes"
-								aria-label="Additional notes"
-								placeholder="Shown at the bottom of the invoice."
-								className="min-h-[72px]"
-								value={draft.notes}
-								onChange={(event) => patchDraft({ notes: event.target.value })}
-							/>
-						</CardContent>
-					</Card>
-				</div>
-
-				{/* min-w-0 because a grid item defaults to min-width:auto, which means
-				    it refuses to be narrower than its content. The document inside has
-				    a real minimum width, and without this the whole page widens to fit
-				    it and scrolls sideways on a phone. It scrolls inside its own frame
-				    instead, which is what the frame was built for. */}
-				<div className="editor:sticky editor:top-20 min-w-0">
-					<PreviewPane draft={draft} onChange={patchDraft} />
-				</div>
-			</main>
+			<InvoiceEditorPanes
+				draft={draft}
+				onChange={patchDraft}
+				notice={signedIn ? <SaveError /> : <SaveNote />}
+			/>
 		</>
 	);
 }

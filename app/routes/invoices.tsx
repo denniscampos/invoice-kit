@@ -120,8 +120,17 @@ function InvoiceTable({ rows }: { rows: Row[] }) {
 				<TableBody>
 					{rows.map((row) => (
 						<TableRow key={row.id}>
+							{/* The number is the link rather than the whole row: a row-wide
+							    click target needs either a nested anchor per cell or JS
+							    navigation, and the invoice number is what a user reaches for
+							    to open one anyway. */}
 							<TableCell className="px-4 font-medium tabular-nums">
-								{row.invoiceNumber}
+								<Link
+									to={`/invoices/${row.id}`}
+									className="underline-offset-4 hover:underline"
+								>
+									{row.invoiceNumber}
+								</Link>
 							</TableCell>
 							<TableCell>
 								{/* An invoice can be saved before the client is filled in, so

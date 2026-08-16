@@ -295,49 +295,21 @@ export function writeStoredDraft(draft: InvoiceDraft): void {
 	}
 }
 
-/* What this tab last saved: the invoice's id, and the number it was saved
-   under.
+/* Forgets the tab's copy, once the invoice has a home of its own.
 
-   The number is what makes the id safe to reuse. On its own the id is not "the
-   invoice I am editing", it is "the first invoice I ever saved in this tab", and
-   aiming a save at it after the user has moved on to their next invoice
-   overwrites the earlier one (F-41). Pairing them lets the editor ask a better
-   question: is this still the same invoice?
+   Called only after a save has succeeded, at which point the invoice is a row in
+   D1 with its own URL and the editor has moved to it. Leaving the draft here
+   would hand it straight back on the next visit to `/`, as a new invoice whose
+   number is already taken.
 
-   Kept beside the draft rather than inside it, because `InvoiceDraft` is read by
-   feature 8 and validated by the PDF endpoint, and neither cares about this.
-   sessionStorage for the same reason the draft uses it: it should not outlive
-   the tab. */
-const SAVED_INVOICE_STORAGE_KEY = "invoice-kit:saved-invoice:v1";
-
-export type SavedInvoiceRef = { id: string; invoiceNumber: string };
-
-export function readSavedInvoiceRef(): SavedInvoiceRef | null {
+   This replaced a reference to the last invoice this tab saved, which existed so
+   the editor could work out whether the draft on screen was one it had saved
+   before. That question is now answered by the URL. */
+export function clearStoredDraft(): void {
 	try {
-		const raw = window.sessionStorage.getItem(SAVED_INVOICE_STORAGE_KEY);
-		if (!raw) return null;
-
-		const parsed: unknown = JSON.parse(raw);
-		if (typeof parsed !== "object" || parsed === null) return null;
-
-		const { id, invoiceNumber } = parsed as Record<string, unknown>;
-
-		return typeof id === "string" && typeof invoiceNumber === "string"
-			? { id, invoiceNumber }
-			: null;
+		window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
 	} catch {
-		return null;
-	}
-}
-
-export function writeSavedInvoiceRef(ref: SavedInvoiceRef): void {
-	try {
-		window.sessionStorage.setItem(
-			SAVED_INVOICE_STORAGE_KEY,
-			JSON.stringify(ref),
-		);
-	} catch {
-		// Same trade as the draft: losing the convenience beats showing an error.
+		// Same trade as the write: losing the convenience beats showing an error.
 	}
 }
 

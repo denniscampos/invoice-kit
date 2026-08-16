@@ -1,11 +1,7 @@
 import { useEffect, useState } from "react";
-import { useFetcher } from "react-router";
+import { useFetcher, useNavigate } from "react-router";
 import { Button } from "~/components/ui/button";
-import {
-	readSavedInvoiceRef,
-	type SavedInvoiceRef,
-	writeSavedInvoiceRef,
-} from "~/lib/invoice-draft";
+import { clearStoredDraft } from "~/lib/invoice-draft";
 import type { SaveResult } from "~/lib/invoice-save.server";
 import type { InvoiceDraft } from "~/types/invoice";
 
@@ -18,33 +14,50 @@ import type { InvoiceDraft } from "~/types/invoice";
    reading the same submission rather than two unrelated fetchers. */
 const SAVE_FETCHER_KEY = "save-invoice";
 
-export function SaveButton({ draft }: { draft: InvoiceDraft }) {
+/* `invoiceId` is set on `/invoices/:id`, where the invoice already exists and
+   saving edits it in place. Without it, this is the editor at `/`, where saving
+   creates an invoice and then hands the user over to its own URL.
+
+   That handoff is the whole of what used to be a guess. The editor kept a note
+   of the last invoice this tab saved and compared invoice numbers to decide
+   whether the draft on screen was still that one, which is how F-41 destroyed an
+   invoice. Now the new invoice gets an address and the editor goes there, so
+   every save after the first is aimed by the URL and there is nothing to
+   infer. */
+export function SaveButton({
+	draft,
+	invoiceId,
+}: {
+	draft: InvoiceDraft;
+	invoiceId?: string;
+}) {
 	const fetcher = useFetcher<SaveResult>({ key: SAVE_FETCHER_KEY });
+	const navigate = useNavigate();
 	const saving = fetcher.state !== "idle";
 
-	/* What this tab last saved, so pressing Save twice updates one invoice
-	   instead of making two. A hint, not a permission: the server scopes every
-	   write by the session's user and creates a new invoice if this id turns out
-	   not to be theirs. */
-	const [saved, setSaved] = useState<SavedInvoiceRef | null>(null);
 	const [savedNumber, setSavedNumber] = useState<string | null>(null);
 
 	useEffect(() => {
-		setSaved(readSavedInvoiceRef());
-	}, []);
+		/* Idle, not merely answered. `fetcher.data` arrives the moment the action
+		   returns, while the router is still revalidating this page's loader, and a
+		   navigation started in that window is dropped: the URL changes and the old
+		   route stays on screen. Waiting for the fetcher to settle is what makes the
+		   handoff actually happen. */
+		if (saving || !fetcher.data?.ok) return;
 
-	useEffect(() => {
-		if (fetcher.data?.ok) {
-			const ref = {
-				id: fetcher.data.id,
-				invoiceNumber: fetcher.data.invoiceNumber,
-			};
+		setSavedNumber(fetcher.data.invoiceNumber);
 
-			setSaved(ref);
-			setSavedNumber(ref.invoiceNumber);
-			writeSavedInvoiceRef(ref);
-		}
-	}, [fetcher.data]);
+		// An edit to an invoice that already has a URL: stay where we are.
+		if (invoiceId) return;
+
+		/* Both together, and in the browser rather than as a redirect from the
+		   action, because the copy in this tab has to be forgotten in the same
+		   breath as the move. A server redirect would leave the draft in storage,
+		   and the next visit to `/` would offer the invoice that was just saved as
+		   a new one, refusing to save under a number it already holds. */
+		clearStoredDraft();
+		navigate(`/invoices/${fetcher.data.id}`);
+	}, [saving, fetcher.data, invoiceId, navigate]);
 
 	// Editing after a save means what is on screen is no longer what was stored.
 	useEffect(() => {
@@ -52,24 +65,10 @@ export function SaveButton({ draft }: { draft: InvoiceDraft }) {
 	}, [draft]);
 
 	function save() {
-		/* The id goes only while the number still matches the one it was saved
-		   under. A changed number means the user has moved on to their next
-		   invoice, and sending the id would aim this save at the previous one and
-		   overwrite it, which is exactly what F-41 was.
-
-		   The trade: correcting the number of an existing invoice produces a
-		   second invoice rather than a renamed one. That is a duplicate the user
-		   can see and delete; the alternative silently destroyed an invoice. */
-		const sameInvoice =
-			saved !== null && saved.invoiceNumber === draft.invoiceNumber.trim();
-
-		fetcher.submit(
-			{
-				draft: JSON.stringify(draft),
-				invoiceId: sameInvoice ? saved.id : "",
-			},
-			{ method: "post" },
-		);
+		/* Only the draft. Which invoice this is, if it is one already, is the
+		   route's business and it reads it from the URL; no id travels in a form
+		   body anywhere in this app. */
+		fetcher.submit({ draft: JSON.stringify(draft) }, { method: "post" });
 	}
 
 	return (

@@ -101,7 +101,16 @@ export function LineItemsCard({ draft, onChange }: LineItemsCardProps) {
 							<span />
 						</div>
 
+						{/* A fixed id, because dnd-kit otherwise names its screen reader
+						    description element from a counter in module scope. That counter
+						    is per isolate on the Worker and per page in the browser, and a
+						    Worker isolate serves many requests, so the server hands out
+						    DndDescribedBy-4 while the browser expects -0 and hydration
+						    reports a mismatch. Only reachable since line items began
+						    server-rendering on /invoices/:id; at / the draft arrives after
+						    mount, so the server never drew a row. */}
 						<DndContext
+							id="line-items"
 							sensors={sensors}
 							collisionDetection={closestCenter}
 							modifiers={[restrictToVerticalAxis, restrictToParentElement]}
