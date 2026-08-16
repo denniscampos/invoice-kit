@@ -295,6 +295,31 @@ export function writeStoredDraft(draft: InvoiceDraft): void {
 	}
 }
 
+/* The id of the invoice this tab last saved, kept beside the draft rather than
+   inside it. Inside would change `InvoiceDraft`, which feature 8 reads and the
+   PDF endpoint validates, for something neither of them cares about.
+
+   sessionStorage for the same reason the draft uses it: it should not outlive
+   the tab. A stale id is harmless anyway, because the server scopes every write
+   by the session's user and creates a new invoice when the id is not theirs. */
+const SAVED_ID_STORAGE_KEY = "invoice-kit:saved-id:v1";
+
+export function readSavedInvoiceId(): string | null {
+	try {
+		return window.sessionStorage.getItem(SAVED_ID_STORAGE_KEY);
+	} catch {
+		return null;
+	}
+}
+
+export function writeSavedInvoiceId(id: string): void {
+	try {
+		window.sessionStorage.setItem(SAVED_ID_STORAGE_KEY, id);
+	} catch {
+		// Same trade as the draft: losing the convenience beats showing an error.
+	}
+}
+
 export function createEmptyDraft(today: Date = new Date()): InvoiceDraft {
 	const { issueDate, dueDate } = todaysDates(today);
 

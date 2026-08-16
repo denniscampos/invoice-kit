@@ -4,9 +4,12 @@ import type { ReactNode } from "react";
    spacer, Download PDF today and Sign in and Save once those exist. The bar
    takes them as children rather than reaching for the draft itself, so it stays
    a piece of chrome with no idea what an invoice is. */
+/* The gap tightens on a phone: feature 7b's Save button put the row 1px over a
+   320px screen, which is F-35 again, and the space between the brand and the
+   buttons is the cheapest 8px in the bar. */
 export function AppBar({ actions }: { actions?: ReactNode }) {
 	return (
-		<header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-card px-4 sm:px-6">
+		<header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-card px-4 sm:gap-4 sm:px-6">
 			<div className="flex items-center gap-2 font-semibold tracking-tight">
 				<span className="grid size-[22px] place-items-center rounded-md bg-primary text-[11px] font-bold text-primary-foreground">
 					IK

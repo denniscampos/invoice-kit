@@ -345,6 +345,42 @@ export async function getInvoice(
 	return toSavedInvoice(invoice, results);
 }
 
+/* Every invoice number this user has already used, for the sequence to count on
+   from. Scoped like everything else here; a number belonging to somebody else is
+   none of this user's business and would not collide with theirs anyway. */
+export async function listInvoiceNumbers(
+	db: D1Database,
+	userId: string,
+): Promise<string[]> {
+	const { results } = await db
+		.prepare(`select invoiceNumber from invoice where userId = ?1`)
+		.bind(userId)
+		.all<{ invoiceNumber: string }>();
+
+	return results.map((row) => row.invoiceNumber);
+}
+
+/* Whether this user already has an invoice with this number, ignoring the one
+   being edited. The unique index is what actually guarantees it; this exists so
+   the answer can be a sentence rather than a constraint error. */
+export async function invoiceNumberTaken(
+	db: D1Database,
+	userId: string,
+	invoiceNumber: string,
+	exceptId?: string,
+): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`select 1 as hit from invoice
+			 where userId = ?1 and invoiceNumber = ?2 and id is not ?3
+			 limit 1`,
+		)
+		.bind(userId, invoiceNumber, exceptId ?? null)
+		.first<{ hit: number }>();
+
+	return row !== null;
+}
+
 /* Replaces an invoice's contents, keeping its id, its createdAt, and its status.
 
    The line items are deleted and rewritten rather than diffed. An invoice has a
