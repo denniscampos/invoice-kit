@@ -9,6 +9,7 @@ import {
 } from "~/lib/print-document.server";
 import {
 	consumeRenderQuota,
+	releaseRenderQuota,
 	secondsUntilNextDay,
 } from "~/lib/render-quota.server";
 import { rateLimitKey, readBoundedText } from "~/lib/request.server";
@@ -196,6 +197,21 @@ export async function action({ request, context }: Route.ActionArgs) {
 		// Detail to the Worker log, which observability is on for; a sentence to
 		// the caller, who can do nothing with a stack trace.
 		console.error("Invoice PDF render failed", error);
+
+		/* An unassigned `browser` means the launch itself failed, so no browser
+		   time was spent and the slot taken above bought nothing. A failure after
+		   this point did open a browser, and that is a real cost the day should
+		   still carry. */
+		if (!browser) {
+			try {
+				await releaseRenderQuota(env.DB);
+			} catch (releaseError) {
+				/* Swallowed on purpose. The caller's problem is the render that
+				   failed, and replacing that with a database error would report the
+				   wrong thing; the worst case is one slot lost from today. */
+				console.error("Could not release the render slot", releaseError);
+			}
+		}
 
 		/* Running out of browser quota is the failure this app will actually see:
 		   the free tier allows one new browser every twenty seconds. Telling

@@ -15,8 +15,14 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 				    two things in this row nobody needs there: one repeats what the
 				    mark says, the other names the page you are already on. Keeping
 				    them cost the bar more width than the screen has, and the page
-				    scrolled sideways. */}
-				<span className="hidden sm:inline">Invoice Kit</span>
+				    scrolled sideways.
+
+				    `sr-only` rather than `hidden`, because hidden takes the name out
+				    of the accessibility tree too, and "IK" is not a product name a
+				    screen reader user would recognise. Absolutely positioned at a
+				    pixel, so it is read without taking any of the width this is
+				    trying to save. */}
+				<span className="sr-only sm:not-sr-only">Invoice Kit</span>
 			</div>
 			<nav className="ml-4 hidden gap-1 sm:flex">
 				<span

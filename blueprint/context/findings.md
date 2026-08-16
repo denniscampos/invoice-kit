@@ -113,137 +113,118 @@ separate templates.
 
 **Resolution:**
 
-### F-33 [P2] fixed - The throttle cannot protect the daily browser quota
+### F-37 [P2] fixed - A render that never happens still spends the day's quota
 
-**File:** wrangler.json:19
+**File:** app/routes/invoice.pdf.tsx:136
 **Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** Feature 15 stops a flood, which is what it was asked to do,
-but the thing actually worth protecting is a daily budget and this cannot express
-one. Two reasons, both confirmed rather than assumed. The binding's window is
-only 10 or 60 seconds, so no configuration of it adds up to the ten minutes of
-browser time a day the free plan allows. And Cloudflare enforces the binding
-**per location** with asynchronously updated counts, describing it as
-"permissive, eventually consistent, and intentionally designed to not be used as
-an accurate accounting system": eight rapid posts from one client against a limit
-of two a minute returned `400 400 400 400 429 429 400 429` on the deployed
-Worker. So `PDF_GLOBAL_LIMITER` at five a minute is five a minute per location
-rather than five worldwide, and a caller spread across locations, or simply a
-crowd, can still drain the day.
-**Suggested fix:** a counter that survives a day and is shared, which means KV
-with a daily key or a Durable Object holding the count, checked before the
-browser call and refusing with the same 429. It is a storage decision and the
-anonymous tier currently touches no storage, so it is worth taking deliberately
-rather than bolting on. Until then the honest description of the protection is
-"stops a loop", not "protects the quota", and the README should not claim more.
+**Why it matters:** The slot is taken before `puppeteer.launch`, and nothing gives
+it back when the launch fails. The comment above it says the capacity "is spent
+only by a request that was going to be rendered", and a request that could not
+get a browser was not rendered: it used no browser time at all.
 
-**Resolution:** Fixed 2026-08-15 by /implement. A `render_quota` table holds one
-row per day, and the PDF route takes a slot from it immediately before the browser
-call, after every other guard, so a malformed or throttled request never costs a
-day's capacity. The cap is 120, under the roughly 150 the free plan's ten minutes
-allows. Past it the endpoint answers 503 with a message naming tomorrow and a
-`Retry-After` counting to the real UTC reset, rather than the 429's "in a minute",
-which would send someone back into the same wall.
+This is the failure the route itself expects most. `isOutOfBrowserQuota` exists
+because the free tier allows one new browser every twenty seconds, so a handful
+of people pressing Download at once produces 429s by design. Each of those still
+increments `render_quota`. Enough of them in a day and the app serves "try again
+tomorrow" while Cloudflare's actual allowance is barely touched, which is the
+mirror image of the problem F-33 was raised to fix.
 
-The increment is one statement, `on conflict do update ... where renders < ?
-returning`, so two simultaneous renders cannot both read the same number, and a
-refusal returns nothing rather than inflating the count under a flood. Both were
-verified against the local database: three calls returned 1, 2, 3; a call at the
-cap returned no row and left the count at 120.
+It errs toward refusing rather than over-spending, which is why this is P2 and
+not higher.
+**Suggested fix:** release the slot when the failure happened before any real
+rendering. A compensating `update render_quota set renders = renders - 1 where
+day = ?1 and renders > 0` in the `isOutOfBrowserQuota` branch is the smallest
+version. Moving the consume after a successful launch is the alternative, but it
+reopens the race that the single-statement increment exists to close.
 
-Verified end to end: a real download took the count 0 to 1, a malformed draft left
-it unchanged, a request at the cap was refused in 9ms with zero renders attempted,
-and clearing the row let downloads resume. The counter holds a date and a number
-and nothing about who asked, which is why writing it from an anonymous request is
-consistent with the tier rule; that rule was amended in the same change to say it
-governs content rather than writes.
+**Resolution:** Fixed 2026-08-15 by /implement. `releaseRenderQuota` gives the
+slot back, but only when `browser` is still undefined in the catch, which is
+exactly the case where the launch failed and no browser time was spent. A failure
+after the browser opened keeps its cost, so a caller who can reliably break the
+renderer cannot download all day for free. The decrement carries `renders > 0`,
+so a refund against a missing or already-zero row is a no-op rather than a
+negative count, and a failure to refund is logged and swallowed so it cannot
+replace the caller's real error with a database one.
 
-### F-35 [P3] fixed - The app bar does not fit a 320px screen
+Proven against the running app with the browser binding genuinely absent
+(`puppeteer.launch(undefined)`, confirmed in the Worker log as `TypeError:
+Cannot read properties of undefined (reading 'fetch')`): four failed launches
+left the count at 0, and with the binding restored a successful download took it
+0 to 1. The first attempt at this test was invalid, because the dev server had
+failed to restart on the new config and an older process answered; it was rerun
+after freeing the port.
 
-**File:** app/components/AppBar.tsx:3
+Not proven empirically: that a failure after launch still consumes its slot.
+There is no way to force `page.pdf` to fail from outside the app, so that rests
+on the single `if (!browser)` guard.
+
+### F-38 [P3] fixed - The product name has no screen-reader text on a phone
+
+**File:** app/components/AppBar.tsx:14
 **Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** Found while re-reviewing F-19. The bar is a single flex row
-with no wrapping: the logo, the product name, the Editor pill, and the 112px
-Download PDF button come to 335px of content inside 305px of available width at a
-320px viewport, so the page scrolls sideways again at that size. At 360px it fits
-only because the product name wraps onto two lines. 320px is an old phone rather
-than a common one, which is why this is P3 and not a repeat of F-19, and the
-preview paper's own overflow is not involved: that scrolls inside its frame as
-designed.
-**Suggested fix:** let the bar wrap, or drop the Editor pill below `sm`, where it
-is the least useful of the four things competing for the row. Both are one class.
+**Why it matters:** Introduced by the F-35 repair. Below `sm` the wordmark is
+`hidden`, which removes it from the accessibility tree as well as from the
+screen, and the `IK` mark beside it carries no label. A screen-reader user on a
+phone hears "IK" where a sighted user sees a logo they recognise. It is P3
+because the app is still perfectly usable and the name is in the page title, but
+it is a regression this repair caused rather than a pre-existing gap.
+**Suggested fix:** one class. `sr-only sm:not-sr-only sm:inline` keeps the text
+for assistive technology at every width while staying invisible below `sm`.
 
-**Resolution:** Fixed 2026-08-15 by /implement, during feature 6c. That feature
-adds the signed-in name and a Sign out button to this row, which took the
-measured content from 335px to 415px inside 305px, so repairing it here was not
-optional.
+**Resolution:** Fixed 2026-08-15 by /implement. `sr-only sm:not-sr-only` in
+place of `hidden sm:inline`, so the wordmark stays in the accessibility tree at
+every width while remaining invisible below `sm`.
 
-The finding's own suggestion was not quite enough on its own: dropping the Editor
-pill below `sm` recovers about 84px and still leaves 331px in 305px. The wordmark
-goes with it, leaving the IK mark alone on a phone. Those are the two things in
-the row nobody needs there, one repeating what the mark already says and the
-other naming the page you are on, while the Sign out and Download PDF buttons are
-what someone actually reached for. Horizontal padding also drops to `px-4` below
-`sm`.
+Measured from the rendered page rather than the source: at 320px the brand's
+accessible name is "IK Invoice Kit" while the span computes to `position:
+absolute`, 1x1, `clip-path: inset(50%)`. Because it is out of flow it costs no
+width, so F-35 does not return: 305/305 at 320px both signed in and signed out,
+and the wordmark is visibly back at 640px.
 
-Measured in the browser at each width, signed in and signed out, as
-`documentElement.scrollWidth` against `clientWidth`:
+### F-39 [unverified] [P3] - Every page may now depend on D1 being reachable
 
-| Width | Bar | Scroll / client |
-|---|---|---|
-| 320 signed in | IK, Sign out, Download PDF | 305 / 305 |
-| 320 signed out | IK, Sign in, Download PDF | 305 / 305 |
-| 360 | IK, Sign in, Download PDF | 345 / 345 |
-| 640 | full bar returns | 625 / 625 |
-| 1280 | full bar | 1265 / 1265 |
+**File:** app/root.tsx:24
+**Found:** 2026-08-15 by /audit (scope: full)
+**Why it matters:** A lead, not a confirmed defect. The root loader calls
+`getUser` on every navigation, so if Better Auth queries D1 whenever a session
+cookie is present, an unreachable database would throw in the root loader and
+take down every page, including the editor that the anonymous tier is supposed
+to run without touching storage at all. Before 6c the editor rendered with no
+database involvement whatsoever.
 
-The 360px case also fixes the second half of the finding: the brand measured 22px
-tall rather than wrapping onto two lines.
+The likely reality is narrower: a visitor with no cookie should never reach a
+query, so the anonymous tier is probably unaffected and only signed-in visitors
+would see the outage. That is the part this pass could not prove.
+**Suggested fix:** see the evidence below; the anonymous half of this needs no
+fix at all.
 
-### F-36 [P2] fixed - Auth rate limiting is on by default but stores its counters per isolate
+**Evidence gathered 2026-08-15 by /implement (fix: audit findings 37-39).** The
+binding was pointed at a database id that does not exist, the dev server was
+restarted and confirmed to have started on that config rather than an older one,
+and `/` was loaded twice. Both `wrangler.json` restores were verified by checksum
+afterwards.
 
-**File:** app/lib/auth.server.ts:12
-**Found:** 2026-08-15, raised at the user's request after deploying feature 6b
-**Why it matters:** `/api/auth/*` is live and unauthenticated, and sign in is the
-one endpoint where guessing repeatedly is the whole attack. Better Auth is not
-silent about this: rate limiting is enabled by default in production, and
-`/sign-in/email` carries a stricter default of three requests per ten seconds.
-The problem is where the counter lives. Storage defaults to **in memory**, which
-the library's own documentation calls "not suitable for many use cases,
-particularly in serverless environments", because each instance keeps its own
-count rather than sharing one. Cloudflare runs many isolates across many
-locations, so the real allowance is three per ten seconds *per isolate*, and a
-caller who spreads requests around gets a multiple of the intended limit. The
-same shape as F-33, and for the same reason: a per instance counter cannot
-enforce a global rule.
+| Request | Result |
+|---|---|
+| `GET /` with no session cookie | **200**, editor renders in full, bar reads "Sign in" |
+| `GET /` with a valid session cookie | **500** |
+| `POST /sign-in` (control, proving the database really was gone) | 400 |
 
-This is a gap in effectiveness rather than an absence of protection, which is why
-it is P2 rather than P1. Nothing here is a confirmed breach: it has not been
-measured against the deployed Worker, and doing so would mean running a password
-guessing burst against production, which is worth planning rather than improvising.
+**The specific risk this finding names is disproven.** It claimed an unreachable
+database would take down "every page, including the editor that the anonymous
+tier is supposed to run without touching storage". The anonymous editor is
+untouched: a visitor with no cookie never reaches a query, so the free path
+survives a total D1 outage exactly as the tier line promises.
 
-Also worth knowing while working locally: rate limiting is **disabled in
-development** by default, so no amount of local testing will show it working.
-**Suggested fix:** set `rateLimit.storage: "database"` in the auth options. The
-D1 binding feature 6a added is already there, so the counter can live in the same
-database as the sessions and be shared by every isolate. Better Auth generates
-the table it needs, which means a new migration alongside the existing one.
-Consider `rateLimit.enabled: true` in development as well, so the behaviour is
-visible where it can be tested cheaply.
+What is left is narrower and arguably correct: a signed-in visitor gets a 500 on
+every route while D1 is down. Every signed-in capability from feature 7 onward
+needs that database, so there is little for the app to usefully show them. The
+alternative, degrading to a signed-out bar, would let a signed-in user keep using
+the editor during an outage, but it would also tell them they are signed out when
+they are not, and mask the outage rather than report it. That is a product call,
+not a defect, and no code was changed for it.
 
-**Resolution:** Fixed 2026-08-15 by /implement. `rateLimit.storage` is now
-`"database"`, so Better Auth's existing three-per-ten-seconds rule on
-`/sign-in/email` counts against one shared row instead of one per isolate. Its
-table was generated rather than hand written and applied as migration 0002, which
-carries only the new table because 0001 already created the other four.
+Left `unverified` for `/audit` to rule on, since `/implement` does not set
+`invalid`.
 
-Rate limiting is also enabled in development, against the library's default of
-production only, because a protection nobody can see locally is one nobody
-notices breaking.
-
-Verified against the running app: six wrong-password attempts returned 401, 401,
-401, then 429 "Too many requests. Please try again later.", and the shared count
-appeared in the table as `no-trusted-ip|/sign-in/email` with a value of 3. A
-correct sign in after the window succeeded, so the throttle recovers rather than
-locking an account out. The key is `no-trusted-ip` only in local development,
-where no `CF-Connecting-IP` header exists; in production Cloudflare sets it and
-the bucket is per caller.
+**Resolution:**

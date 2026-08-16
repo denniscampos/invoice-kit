@@ -61,3 +61,29 @@ export async function consumeRenderQuota(
 		? { allowed: true, used: row.renders }
 		: { allowed: false, used: DAILY_RENDER_LIMIT };
 }
+
+/* Gives back a slot that bought nothing.
+
+   The counter is taken before the browser call, so a render that never started
+   has already been charged for browser time it did not use. That is the right
+   order (a malformed request must not be able to make us pay first and ask
+   questions later), which leaves the refund as the correction.
+
+   Only for a failure before the browser opened. Refunding every failure would
+   let a caller who can reliably break the renderer download all day for free,
+   because each attempt would hand its slot straight back.
+
+   `renders > 0` because a refund for a day with no row, or a row already at
+   zero, is a no-op rather than a negative count. */
+export async function releaseRenderQuota(
+	db: D1Database,
+	now: Date = new Date(),
+): Promise<void> {
+	await db
+		.prepare(
+			`update render_quota set renders = renders - 1
+			 where day = ?1 and renders > 0`,
+		)
+		.bind(dayKey(now))
+		.run();
+}
