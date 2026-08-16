@@ -202,3 +202,35 @@ is suggested INV-0003 in a fresh editor, and saving it succeeds with no error.
 INV-10000 still outranks INV-9999, and a user whose only invoice is 2026-04 still
 starts at INV-0001.
 
+### F-45 [P2] open - The dashboard cannot be reached from a phone
+
+**File:** app/components/AppBar.tsx:47
+**Found:** 2026-08-16 by /implement (feature 9, step 3)
+**Why it matters:** The nav is hidden below `sm`, so a signed-in user on a phone
+has no link to `/invoices` from anywhere in the app. They can still get there by
+typing the URL, and the page itself works fine at 320px, but nothing on screen
+leads to it. Feature 9's whole point is that a saved invoice can be found again,
+and on a phone it can only be found by someone who already knows the address.
+
+Measured rather than guessed. With the nav removed, the editor's bar is
+`scrollWidth` 305 in a `clientWidth` of 305: exactly full, no spare pixels. Save
+(52px) and Download PDF (112px) take 164px of it. The two nav items need 146px
+between them, which puts the header at 451px and scrolls the page sideways, which
+is F-35 returning. So this is not a styling slip; the row has no room, and
+something has to leave it before anything can join.
+
+The brand mark was made a link to `/` in the same step, which costs no width, so
+the reverse trip (dashboard back to editor) does work on a phone. Only the
+outbound one is missing.
+**Suggested fix:** free the width first, then spend it. Shortening Download PDF
+to "PDF" below `sm` returns about 62px, which is enough for an icon-only Invoices
+link (~32px). Both are one line behind a breakpoint. The alternative is to stop
+treating the bar as a single row on a phone and give the app a real mobile nav,
+which is worth doing once feature 11 adds the detail view and there is more than
+one destination to reach.
+
+**Accepted for now by the user (2026-08-16):** desktop is the working surface
+today, and the fix reaches into feature 5's Download button, which is outside
+feature 9's spec. Revisit at feature 11.
+**Resolution:**
+

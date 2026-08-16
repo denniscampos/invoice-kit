@@ -15,7 +15,7 @@
 | Build | Vite 8 |
 | Language | TypeScript (strict, project references) |
 | Package manager | pnpm |
-| Tests | none yet (opt-in, see Testing) |
+| Tests | Vitest, `pnpm test`, gate on (see Testing) |
 
 ## TypeScript
 
@@ -50,8 +50,8 @@
 - Types: `app/types/[feature].ts`
 - Utils: `app/lib/[utility].ts`
 
-> TODO: only `app/routes/home.tsx` and `app/welcome/` exist so far; confirm these
-> folder conventions when the first real feature lands.
+These conventions are in force: features 1 through 7 follow them, and the starter's
+`app/routes/home.tsx` and `app/welcome/` are long gone.
 
 ## Naming
 
@@ -120,8 +120,9 @@ Rules for the anonymous tier:
 
 ## Data
 
-Cloudflare D1 (SQLite) for records, R2 for files. Neither is wired up yet; the
-bindings land with feature 5 (auth) and feature 6 (persistence).
+Cloudflare D1 (SQLite) for records, R2 for logos. D1 is wired up and carries auth
+(feature 6) and invoices (feature 7). R2 is not bound yet; it lands with the logo
+upload, feature 13.
 
 - Schema changes ship as D1 migration files, applied locally and then remotely;
   never edit a table by hand in the dashboard

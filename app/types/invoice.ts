@@ -3,6 +3,13 @@
    all read or write this, and it mirrors the D1 schema closely enough that
    saving is a mapping rather than a translation. Change it deliberately. */
 
+/* What an invoice's status can be once it is stored. Here rather than in
+   invoice-store.server.ts because the dashboard derives a display status from it
+   in the browser, and a client module should not have to reach into a `.server`
+   file for a type. Note there is no `overdue`: that is derived from this plus the
+   due date, never stored. See invoice-status.ts. */
+export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
+
 export type Party = {
 	name: string;
 	address: string;

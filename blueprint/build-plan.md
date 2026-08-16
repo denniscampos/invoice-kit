@@ -71,9 +71,9 @@ cleaned-up checkbox version before generating the project overview.
   - [x] 5a. **Print-ready invoice HTML** - the Worker validates a posted draft and returns it as one standalone, letter-sized HTML document with the styles inlined
   - [x] 5b. **PDF download** - Browser Rendering turns that document into a PDF, streamed to a Download button in the editor
 
-Items 1-5 are the whole free path: build an invoice and download it without
-signing up. Nothing is stored on the server yet. Everything below needs an
-account.
+Items 1-5 are most of the free path: build an invoice and download it without
+signing up. Nothing is stored on the server yet. Item 23 finishes that path with
+a printed copy. Everything else below needs an account.
 
 - [x] 6. **Accounts and auth** - sign up, sign in, sign out, and protected routes using Better Auth with D1
   - [x] 6a. **Database and auth server** - D1 created and bound, Better Auth configured against it, its schema migrated, its route handler mounted, no UI
@@ -82,21 +82,41 @@ account.
 - [x] 7. **Invoice persistence** - save invoices to D1, scoped to the signed-in user, and retrieve them later
   - [x] 7a. **Schema and the store** - the invoice and line item tables, the draft to row mapping, and create/read/update scoped by the session user, no UI
   - [x] 7b. **Saving from the editor** - the Save button, per-user invoice numbering, and what the editor shows once an invoice is saved
-- [ ] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account
-- [ ] 9. **Invoice list** - browse saved invoices with key details like client, invoice number, total, due date, and status
+
+Feature 7 can write an invoice to D1 but nothing can read one back, so a saved
+invoice is unreachable once the tab closes. Items 9, 11, 10, and 12 are the
+dashboard that makes saving mean something, and they come before everything else.
+The numbers below are out of sequence on purpose: they are the original ones,
+kept so the archived specs and the overview still line up, reordered to the order
+they get built in.
+
+- [x] 9. **Invoice list** - the dashboard: browse saved invoices with client, invoice number, total, due date, and status
+- [ ] 11. **Invoice detail view** - open a saved invoice at its own URL to view, edit, download, or update it, so the editor works on one identified invoice instead of guessing which one it is
 - [ ] 10. **Invoice status tracking** - mark invoices draft, sent, or paid, and show overdue derived from the due date
-- [ ] 11. **Invoice detail view** - open a saved invoice to view, edit, download, or update its status
 - [ ] 12. **Delete and void** - delete a draft invoice, or void a sent one while keeping the record
-- [ ] 13. **Logo upload** - upload and attach a logo to an invoice using R2 storage
-- [ ] 14. **Previous invoice upload** - upload and store invoice files that were created outside the app
+- [ ] 23. **Print** - print the invoice straight from the browser, so the one-off path does not have to spend a Browser Rendering call to put an invoice on paper
+- [ ] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account
+- [ ] 19. **Tax and discount controls** - support invoice-level taxes, discounts, and adjusted totals
+- [ ] 13. **Logo upload** - upload a logo to R2 and attach it to an invoice, stored once per user and referenced by every invoice that uses it
+- [ ] 24. **Password reset** - request a reset link by email and set a new password, via Better Auth and Cloudflare Email Service
 - [x] 15. **Anonymous abuse protection** - rate limit the account-free PDF endpoint so Browser Rendering cannot be run up by strangers
 - [ ] 16. **Local and self-hosted setup** - documented clone-to-running path against user-owned D1 and R2
-- [ ] 17. **Deployment readiness** - configure Cloudflare deployment with D1, R2, and PDF generation bindings verified
+- [ ] 17. **Deployment readiness** - confirm the deployed Cloudflare bindings, add the R2 bucket feature 13 needs, and verify migrations against the remote database
 
 ## Post-MVP
 
-- [ ] 18. **Custom fields** - allow optional custom fields for bill from, bill to, and invoice details
-- [ ] 19. **Tax and discount controls** - support invoice-level taxes, discounts, and adjusted totals
 - [ ] 20. **Invoice duplication** - duplicate an existing invoice to quickly create a similar one
 - [ ] 21. **Client reuse** - save and reuse bill-to client details across invoices
 - [ ] 22. **Settings** - configure default currency, payment terms, sender details, and invoice numbering
+- [ ] 18. **Custom fields** - allow optional custom fields for bill from, bill to, and invoice details
+- [ ] 14. **Previous invoice upload** - upload and store invoice files that were created outside the app
+
+Item 14 was moved out of the MVP. Storing files the app did not create is a
+document archive rather than an invoice builder, and it is the expensive half of
+R2: arbitrary content types, a download route, and its own size and abuse rules.
+Item 13 keeps R2 for logos, which is an image, one bucket, and one upload route.
+
+Item 24 was added after feature 6 shipped. Sign-up, sign-in, and sign-out work,
+but nothing recovers an account, so a user who forgets their password is locked
+out for good. That is a hole in the account path rather than a nice-to-have, and
+the deployed instance already has a real account in it.

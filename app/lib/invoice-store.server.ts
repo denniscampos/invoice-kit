@@ -1,5 +1,10 @@
 import { lineItemTotal } from "~/lib/money";
-import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
+import type {
+	InvoiceDraft,
+	InvoiceStatus,
+	LineItem,
+	Party,
+} from "~/types/invoice";
 
 /* Invoices in D1: the mapping between the draft the editor speaks and the rows
    the database holds, and the reads and writes on top of it.
@@ -8,7 +13,9 @@ import type { InvoiceDraft, LineItem, Party } from "~/types/invoice";
    Nothing reads a session, and nothing accepts an id that arrived from a
    request; the route resolves who is asking and this module trusts it. */
 
-export type InvoiceStatus = "draft" | "sent" | "paid" | "void";
+/* Re-exported so the callers that already import it from here keep working; it
+   now lives in types/invoice.ts because the dashboard needs it on the client. */
+export type { InvoiceStatus };
 
 /* What a stored invoice looks like coming back out. The editable body stays an
    InvoiceDraft rather than being flattened into forty fields, so the editor and
@@ -76,6 +83,38 @@ export type LineItemRow = {
 	rate: number;
 	total: number;
 };
+
+/* The columns a list row needs, and the type is whatever they are.
+
+   Deriving the type from the list rather than writing both means they cannot
+   drift: adding a column here adds it to `InvoiceSummary`, and a name that is
+   not a real column is a type error rather than an undefined at runtime.
+
+   Expands to id, invoiceNumber, status, billToName, issueDate, dueDate,
+   currency, total, and updatedAt. Deliberately not `select *`: a list row has no
+   use for eighteen party columns or the notes, and reading more than the answer
+   needs on a route that runs constantly is what F-43 was about. */
+const SUMMARY_COLUMNS = [
+	"id",
+	"invoiceNumber",
+	"status",
+	"billToName",
+	"issueDate",
+	"dueDate",
+	"currency",
+	"total",
+	"updatedAt",
+] as const satisfies readonly (keyof InvoiceRow)[];
+
+/* Load bearing: features 10, 11, and 12 read this. */
+export type InvoiceSummary = Pick<InvoiceRow, (typeof SUMMARY_COLUMNS)[number]>;
+
+/* How many invoices the dashboard will show. An unbounded "every invoice this
+   user has ever made" is F-43's shape on the one screen guaranteed to grow, so
+   the query is capped and the screen says when it hit the cap. Real paging waits
+   until somebody actually has fifty invoices; building it now would be guessing
+   at how they want to page through a list nobody has yet. */
+export const INVOICE_LIST_LIMIT = 50;
 
 /* The money the server is willing to store, computed from quantity and rate
    alone.
@@ -339,6 +378,33 @@ export async function getInvoice(
 		.all<LineItemRow>();
 
 	return toSavedInvoice(invoice, results);
+}
+
+/* This user's invoices for the dashboard, newest first.
+
+   Ordered by issue date because an invoice is a dated document and that is how
+   people look for one; `createdAt` breaks ties so two invoices issued the same
+   day come back in a stable order rather than whatever SQLite feels like.
+
+   Asks for one row more than it will show, which is how `more` can be honest
+   without a second count query: getting the extra row back is the only proof
+   that the cap actually cut something off. */
+export async function listInvoices(
+	db: D1Database,
+	userId: string,
+	limit: number = INVOICE_LIST_LIMIT,
+): Promise<{ invoices: InvoiceSummary[]; more: boolean }> {
+	const { results } = await db
+		.prepare(
+			`select ${SUMMARY_COLUMNS.join(", ")} from invoice
+			 where userId = ?1
+			 order by issueDate desc, createdAt desc
+			 limit ?2`,
+		)
+		.bind(userId, limit + 1)
+		.all<InvoiceSummary>();
+
+	return { invoices: results.slice(0, limit), more: results.length > limit };
 }
 
 /* The highest sequence number this user has used, for the next one to count on
