@@ -80,6 +80,8 @@ account.
   - [x] 6b. **Sign up and sign in** - the two pages, real sessions, back to the editor afterwards
   - [x] 6c. **Session in the app** - the app bar reflects who is signed in, sign out works, and a requireUser helper is ready for feature 7
 - [ ] 7. **Invoice persistence** - save invoices to D1, scoped to the signed-in user, and retrieve them later
+  - [x] 7a. **Schema and the store** - the invoice and line item tables, the draft to row mapping, and create/read/update scoped by the session user, no UI
+  - [ ] 7b. **Saving from the editor** - the Save button, per-user invoice numbering, and what the editor shows once an invoice is saved
 - [ ] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account
 - [ ] 9. **Invoice list** - browse saved invoices with key details like client, invoice number, total, due date, and status
 - [ ] 10. **Invoice status tracking** - mark invoices draft, sent, or paid, and show overdue derived from the due date

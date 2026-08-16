@@ -113,118 +113,17 @@ separate templates.
 
 **Resolution:**
 
-### F-37 [P2] fixed - A render that never happens still spends the day's quota
+### F-40 [P3] open - The starter template's sample variable is still deployed
 
-**File:** app/routes/invoice.pdf.tsx:136
-**Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** The slot is taken before `puppeteer.launch`, and nothing gives
-it back when the launch fails. The comment above it says the capacity "is spent
-only by a request that was going to be rendered", and a request that could not
-get a browser was not rendered: it used no browser time at all.
-
-This is the failure the route itself expects most. `isOutOfBrowserQuota` exists
-because the free tier allows one new browser every twenty seconds, so a handful
-of people pressing Download at once produces 429s by design. Each of those still
-increments `render_quota`. Enough of them in a day and the app serves "try again
-tomorrow" while Cloudflare's actual allowance is barely touched, which is the
-mirror image of the problem F-33 was raised to fix.
-
-It errs toward refusing rather than over-spending, which is why this is P2 and
-not higher.
-**Suggested fix:** release the slot when the failure happened before any real
-rendering. A compensating `update render_quota set renders = renders - 1 where
-day = ?1 and renders > 0` in the `isOutOfBrowserQuota` branch is the smallest
-version. Moving the consume after a successful launch is the alternative, but it
-reopens the race that the single-statement increment exists to close.
-
-**Resolution:** Fixed 2026-08-15 by /implement. `releaseRenderQuota` gives the
-slot back, but only when `browser` is still undefined in the catch, which is
-exactly the case where the launch failed and no browser time was spent. A failure
-after the browser opened keeps its cost, so a caller who can reliably break the
-renderer cannot download all day for free. The decrement carries `renders > 0`,
-so a refund against a missing or already-zero row is a no-op rather than a
-negative count, and a failure to refund is logged and swallowed so it cannot
-replace the caller's real error with a database one.
-
-Proven against the running app with the browser binding genuinely absent
-(`puppeteer.launch(undefined)`, confirmed in the Worker log as `TypeError:
-Cannot read properties of undefined (reading 'fetch')`): four failed launches
-left the count at 0, and with the binding restored a successful download took it
-0 to 1. The first attempt at this test was invalid, because the dev server had
-failed to restart on the new config and an older process answered; it was rerun
-after freeing the port.
-
-Not proven empirically: that a failure after launch still consumes its slot.
-There is no way to force `page.pdf` to fail from outside the app, so that rests
-on the single `if (!browser)` guard.
-
-### F-38 [P3] fixed - The product name has no screen-reader text on a phone
-
-**File:** app/components/AppBar.tsx:14
-**Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** Introduced by the F-35 repair. Below `sm` the wordmark is
-`hidden`, which removes it from the accessibility tree as well as from the
-screen, and the `IK` mark beside it carries no label. A screen-reader user on a
-phone hears "IK" where a sighted user sees a logo they recognise. It is P3
-because the app is still perfectly usable and the name is in the page title, but
-it is a regression this repair caused rather than a pre-existing gap.
-**Suggested fix:** one class. `sr-only sm:not-sr-only sm:inline` keeps the text
-for assistive technology at every width while staying invisible below `sm`.
-
-**Resolution:** Fixed 2026-08-15 by /implement. `sr-only sm:not-sr-only` in
-place of `hidden sm:inline`, so the wordmark stays in the accessibility tree at
-every width while remaining invisible below `sm`.
-
-Measured from the rendered page rather than the source: at 320px the brand's
-accessible name is "IK Invoice Kit" while the span computes to `position:
-absolute`, 1x1, `clip-path: inset(50%)`. Because it is out of flow it costs no
-width, so F-35 does not return: 305/305 at 320px both signed in and signed out,
-and the wordmark is visibly back at 640px.
-
-### F-39 [unverified] [P3] - Every page may now depend on D1 being reachable
-
-**File:** app/root.tsx:24
-**Found:** 2026-08-15 by /audit (scope: full)
-**Why it matters:** A lead, not a confirmed defect. The root loader calls
-`getUser` on every navigation, so if Better Auth queries D1 whenever a session
-cookie is present, an unreachable database would throw in the root loader and
-take down every page, including the editor that the anonymous tier is supposed
-to run without touching storage at all. Before 6c the editor rendered with no
-database involvement whatsoever.
-
-The likely reality is narrower: a visitor with no cookie should never reach a
-query, so the anonymous tier is probably unaffected and only signed-in visitors
-would see the outage. That is the part this pass could not prove.
-**Suggested fix:** see the evidence below; the anonymous half of this needs no
-fix at all.
-
-**Evidence gathered 2026-08-15 by /implement (fix: audit findings 37-39).** The
-binding was pointed at a database id that does not exist, the dev server was
-restarted and confirmed to have started on that config rather than an older one,
-and `/` was loaded twice. Both `wrangler.json` restores were verified by checksum
-afterwards.
-
-| Request | Result |
-|---|---|
-| `GET /` with no session cookie | **200**, editor renders in full, bar reads "Sign in" |
-| `GET /` with a valid session cookie | **500** |
-| `POST /sign-in` (control, proving the database really was gone) | 400 |
-
-**The specific risk this finding names is disproven.** It claimed an unreachable
-database would take down "every page, including the editor that the anonymous
-tier is supposed to run without touching storage". The anonymous editor is
-untouched: a visitor with no cookie never reaches a query, so the free path
-survives a total D1 outage exactly as the tier line promises.
-
-What is left is narrower and arguably correct: a signed-in visitor gets a 500 on
-every route while D1 is down. Every signed-in capability from feature 7 onward
-needs that database, so there is little for the app to usefully show them. The
-alternative, degrading to a signed-out bar, would let a signed-in user keep using
-the editor during an outage, but it would also tell them they are signed out when
-they are not, and mask the outage rather than report it. That is a product call,
-not a defect, and no code was changed for it.
-
-Left `unverified` for `/audit` to rule on, since `/implement` does not set
-`invalid`.
+**File:** wrangler.json:57
+**Found:** 2026-08-16 by /audit (scope: full)
+**Why it matters:** `VALUE_FROM_CLOUDFLARE` came with the React Router starter and
+no code has ever read it. It is bound on every deploy and printed in the binding
+list beside D1, Browser Rendering, and the two rate limiters, so the one line in
+that list that means nothing sits next to four that matter. Config nobody reads is
+the same maintenance problem as code nobody calls: the next person has to work out
+whether it is load-bearing before touching it.
+**Suggested fix:** delete the `vars` block. `pnpm cf-typegen` afterwards, so
+`worker-configuration.d.ts` stops declaring it too.
 
 **Resolution:**
