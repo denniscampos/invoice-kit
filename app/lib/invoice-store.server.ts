@@ -411,23 +411,29 @@ export async function listInvoices(
    from. Scoped like everything else here; a number belonging to somebody else is
    none of this user's business and would not collide with theirs anyway.
 
-   One row, not the whole column. This runs on every editor load and again after
-   every save, and the number of invoices a user has is the number this app
-   exists to grow, so reading all of them to look at one was a cost that only
-   went up (F-43).
+   A handful of rows, not the whole column. This runs on every editor load and
+   again after every save, and the number of invoices a user has is the number
+   this app exists to grow, so reading all of them to look at one was a cost that
+   only went up (F-43).
 
-   Ordered by length first: as strings, 'INV-9999' sorts above 'INV-10000', and
-   the longer number is the larger one once the sequence outgrows its padding.
+   The two globs together say what `nextInvoiceNumber` means by a sequence
+   number: INV- then digits and nothing else. The first requires a digit after
+   the dash, the second rejects anything holding a non-digit anywhere after the
+   prefix. Both are needed. With only the first, INV-12AB qualifies, and ten
+   values like it fill the whole window and push the real numbers out, leaving
+   `nextInvoiceNumber` nothing it can parse, so it falls back to INV-0001 and
+   suggests a number the user already holds (F-44).
 
-   A handful rather than exactly one, and `glob` rather than `like`. Sorting is
-   by string, so any INV- value made of letters outranks the real numbers at the
-   same width: INV-DRAFT beats INV-0002. Asking for a single row meant that one
-   could be unparseable, leaving `nextInvoiceNumber` to fall back to INV-0001 and
-   suggest a number the user already had (F-44). The glob keeps out anything with
-   no digit after the dash, and the small limit covers what it cannot express,
-   like INV-12AB, by letting `nextInvoiceNumber` skip it the way it always has.
+   Asking the database for candidates the parser will only throw away was the
+   mistake. Now every row that comes back is one it can read.
 
-   Still bounded, which is the whole point of not reading the column (F-43). */
+   Ordered by the sequence part as a number rather than as text, which is what
+   makes INV-10000 outrank INV-9999 without sorting on length first. `substr`
+   from 5 is safe only because the globs guarantee the four-character prefix.
+
+   Still ten rows rather than one: `nextInvoiceNumber` takes the padding width
+   from every candidate it is given, so a user who moved to six digits keeps
+   them. */
 export async function listInvoiceNumbers(
 	db: D1Database,
 	userId: string,
@@ -435,8 +441,10 @@ export async function listInvoiceNumbers(
 	const { results } = await db
 		.prepare(
 			`select invoiceNumber from invoice
-			 where userId = ?1 and invoiceNumber glob 'INV-[0-9]*'
-			 order by length(invoiceNumber) desc, invoiceNumber desc
+			 where userId = ?1
+			   and invoiceNumber glob 'INV-[0-9]*'
+			   and not invoiceNumber glob 'INV-*[^0-9]*'
+			 order by cast(substr(invoiceNumber, 5) as integer) desc
 			 limit 10`,
 		)
 		.bind(userId)

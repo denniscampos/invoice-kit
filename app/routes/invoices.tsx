@@ -71,9 +71,13 @@ export default function Invoices({ loaderData }: Route.ComponentProps) {
 
 				{invoices.length === 0 ? <NoInvoices /> : <InvoiceTable rows={invoices} />}
 
+				{/* "Newest by issue date", not "most recent": the list is ordered by
+				    the date on the invoice, so an invoice created today but dated last
+				    year sorts low. Saying "most recent" would describe a sort this does
+				    not do. */}
 				{more ? (
 					<p className="mt-3 text-sm text-muted-foreground">
-						Showing your {limit} most recent invoices.
+						Showing your {limit} newest invoices by issue date.
 					</p>
 				) : null}
 			</main>
@@ -96,7 +100,7 @@ function NoInvoices() {
 	);
 }
 
-type Row = Awaited<ReturnType<typeof loader>>["invoices"][number];
+type Row = Route.ComponentProps["loaderData"]["invoices"][number];
 
 function InvoiceTable({ rows }: { rows: Row[] }) {
 	return (

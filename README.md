@@ -134,9 +134,7 @@ if you want something other than `invoice-kit`. That name becomes your URL:
 ```
 
 The `browser` binding is what turns the invoice HTML into a PDF. Leave it in
-place; without it the download endpoint has nothing to call. The leftover
-`VALUE_FROM_CLOUDFLARE` var from the starter template is unused and safe to
-delete.
+place; without it the download endpoint has nothing to call.
 
 ### 4. Check, then deploy
 

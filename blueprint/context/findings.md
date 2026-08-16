@@ -113,7 +113,7 @@ separate templates.
 
 **Resolution:**
 
-### F-40 [P3] open - The starter template's sample variable is still deployed
+### F-40 [P3] fixed - The starter template's sample variable is still deployed
 
 **File:** wrangler.json:57
 **Found:** 2026-08-16 by /audit (scope: full)
@@ -126,42 +126,21 @@ whether it is load-bearing before touching it.
 **Suggested fix:** delete the `vars` block. `pnpm cf-typegen` afterwards, so
 `worker-configuration.d.ts` stops declaring it too.
 
-**Resolution:**
+**Resolution:** Fixed 2026-08-16 by /implement. The `vars` block is gone from
+`wrangler.json` and `pnpm cf-typegen` regenerated `worker-configuration.d.ts`
+without it. `README.md` also described the var as "unused and safe to delete",
+which stopped being true once it was deleted, so that sentence went too.
 
-### F-43 [P3] fixed - Every page load reads all of a user's invoice numbers
+Proven by `pnpm check`, whose deploy dry run now lists four bindings (DB,
+BROWSER, PDF_LIMITER, PDF_GLOBAL_LIMITER) and no environment variable. `rg
+VALUE_FROM_CLOUDFLARE` across app, workers, config, generated types, and docs
+returns nothing.
 
-**File:** app/routes/editor.tsx:45
-**Found:** 2026-08-16 by /audit (scope: full)
-**Why it matters:** The editor's loader calls `listInvoiceNumbers`, which selects
-every invoice number the user has, on every navigation and again after every
-save, to compute one suggestion. The suggestion is then usually discarded,
-because a restored draft keeps its own number and only a brand new invoice uses
-it. The cost grows with the number of invoices a user has, which is the number
-this app exists to grow, and it is paid on the app's busiest route.
+Note for the next deploy: the variable stays bound on the running Worker until
+something is deployed over it. Nothing reads it, so this is untidiness rather
+than drift with teeth.
 
-Nothing is wrong today, with one invoice in the database. It is filed now because
-the shape is unbounded rather than because it currently hurts.
-**Suggested fix:** ask the database for the answer instead of the raw material:
-`select invoiceNumber from invoice where userId = ?1 and invoiceNumber like
-'INV-%' order by length(invoiceNumber) desc, invoiceNumber desc limit 1`, and
-hand that one value to `nextInvoiceNumber`. The function already accepts a list,
-so it needs no change.
-
-**Resolution:** Fixed 2026-08-16 by /implement. `listInvoiceNumbers` now asks for
-the single highest `INV-` number rather than the whole column, ordered by length
-then value so a longer number wins once the sequence outgrows its padding.
-
-Proven against the local database: with INV-0001, INV-0002, INV-9999, INV-10000,
-and 2026-04 present, the query returns INV-10000 and the editor suggests
-INV-10001. With only 2026-04 present the query returns nothing and the editor
-suggests INV-0001, so a user numbering invoices their own way still starts the
-sequence correctly.
-
-**Re-reviewed 2026-08-16 by /audit (scope: current): still `fixed`, not closed.**
-The unbounded read is genuinely gone, but the repair introduced F-44 below, so
-the two want re-reviewing together once that is dealt with.
-
-### F-44 [P2] fixed - The editor can suggest an invoice number it will then refuse
+### F-44 [P3] fixed - The editor can suggest an invoice number it will then refuse
 
 **File:** app/lib/invoice-store.server.ts:110
 **Found:** 2026-08-16 by /audit (scope: current)
@@ -202,6 +181,52 @@ is suggested INV-0003 in a fresh editor, and saving it succeeds with no error.
 INV-10000 still outranks INV-9999, and a user whose only invoice is 2026-04 still
 starts at INV-0001.
 
+**Re-reviewed 2026-08-16 by /audit (scope: full): not closed, lowered to P3.**
+The repair narrowed this a long way but did not remove it. `glob 'INV-[0-9]*'`
+only requires a digit immediately after the dash, so `INV-12AB` still passes, and
+ten rows is a window rather than a guarantee. Reproduced read-only against the
+local database with a `values` list rather than by writing rows: given
+INV-0001, INV-0002, INV-0003 and ten numbers of the form `INV-<digits><letters>`,
+the query returns
+
+    INV-23AB INV-22AB INV-19AB INV-18AB INV-17AB
+    INV-16AB INV-15AB INV-14AB INV-13AB INV-12AB
+
+and the real sequence never reaches `nextInvoiceNumber`, which skips all ten,
+falls back to INV-0001, and hands the user a number they already hold. That is
+the original symptom exactly.
+
+P3 rather than P2 now because reaching it went from one oddly-named invoice to
+ten of them, all of a shape a user has to construct deliberately. The durable fix
+is to stop asking SQL to pick the winner: order by the numeric part
+(`cast(substr(invoiceNumber, 5) as integer) desc`) so letters cannot outrank
+digits, or drop the window and let `nextInvoiceNumber` filter a bounded page of
+candidates it can actually parse.
+
+**Fixed 2026-08-16 by /implement.** The suggested numeric ordering alone would
+not have worked: `INV-23AB` casts to 23, which genuinely is greater than
+`INV-0003`, so the letter-bearing numbers would still have taken the window. The
+ordering was never the cause; the filter was, because the query returned
+candidates `nextInvoiceNumber` can only discard.
+
+`listInvoiceNumbers` now pairs the existing glob with `and not invoiceNumber glob
+'INV-*[^0-9]*'`, which rejects anything holding a non-digit after the prefix, so
+the two globs together mean exactly what the parser's `^INV-(\d+)$` means.
+Ordering moved to `cast(substr(invoiceNumber, 5) as integer) desc`, which then
+made the `length()` sort unnecessary.
+
+Proven read-only against the local database with the same `values` list that
+reproduced the defect, extended with the regression cases. Given INV-0001,
+INV-0002, INV-0003, ten INV-<digits><letters> values, INV-9999, INV-10000,
+INV-000042, 2026-04, ACME-1, INV- and INV-DRAFT, the query returns only
+INV-10000, INV-9999, INV-000042, INV-0003, INV-0002, INV-0001: all ten
+letter-bearing values gone, INV-10000 above INV-9999, and INV-000042 still
+present so the six-digit padding survives.
+
+Then in the browser: with INV-0001 the only saved invoice, a fresh editor
+(sessionStorage cleared, so the suggestion path runs rather than a restored
+draft) offers INV-0002.
+
 ### F-45 [P2] open - The dashboard cannot be reached from a phone
 
 **File:** app/components/AppBar.tsx:47
@@ -233,4 +258,80 @@ one destination to reach.
 today, and the fix reaches into feature 5's Download button, which is outside
 feature 9's spec. Revisit at feature 11.
 **Resolution:**
+
+### F-46 [P2] open - A signed-in user's PDF download is throttled as if anonymous
+
+**File:** app/routes/invoice.pdf.tsx:87
+**Found:** 2026-08-16 by /audit (scope: full)
+**Why it matters:** The overview's access tier table reads "Download the PDF -
+anonymous: yes, rate limited; signed in: yes". The route does not implement that
+split. There is no `getUser` call anywhere in the file, so every caller passes
+through `PDF_LIMITER` at two requests a minute per IP, the shared
+`PDF_GLOBAL_LIMITER` at five a minute for everyone together, and the 120-render
+daily quota. `DownloadPdfButton` posts here for both tiers, so a signed-in user
+downloading a third invoice inside a minute is told "Too many invoice downloads
+from here. Try again in a minute."
+
+The daily quota being shared is deliberate and documented at
+render-quota.server.ts:12. The per-IP burst limit applying to accounts is not
+mentioned anywhere, and it is the one a real user meets first: sending three
+invoices in one sitting is ordinary work, not abuse.
+
+Worse in an office than at home. The limiter keys on `CF-Connecting-IP`, so
+everyone behind one NAT shares the two-per-minute bucket regardless of who is
+signed in as whom.
+**Suggested fix:** resolve the session at the top of the action and skip the two
+limiters when it exists, keeping the daily quota for everyone so an account
+cannot drain the day's browser time either. Feature 11 adds `/invoices/:id/pdf`
+for saved invoices and is the natural place to settle which guards belong to
+which tier; the anonymous route keeps every guard it has today.
+**Resolution:**
+
+### F-47 [P3] fixed - The invoice list types its row from the loader instead of the generated types
+
+**File:** app/routes/invoices.tsx:99
+**Found:** 2026-08-16 by /audit (scope: full)
+**Why it matters:** `type Row = Awaited<ReturnType<typeof loader>>["invoices"][number]`
+reaches through the loader's return type by hand. The coding standards say to use
+the generated `./+types/<route>` types for `loaderData`, and every other route in
+the app does: sign-in, sign-up, editor, and the default export of this very file
+all take `Route.ComponentProps`. This is the only place that spells the type out
+the long way, three lines below a component that does it the documented way.
+
+Nothing is broken; it resolves to the same type. It is drift, and drift in the
+one file a reader will copy when they build the feature 11 detail view.
+**Suggested fix:** `type Row = Route.ComponentProps["loaderData"]["invoices"][number]`,
+which uses the generated type the standards name and survives the loader being
+refactored.
+**Resolution:** Fixed 2026-08-16 by /implement, exactly as suggested. The file
+now has one way of naming loader data, the generated one, and `tsc -b` exits 0,
+which is the real gate for a type-only change.
+
+### F-48 [P3] fixed - The list cap says "most recent" but sorts by issue date
+
+**File:** app/routes/invoices.tsx:67
+**Found:** 2026-08-16 by /audit (scope: full)
+**Why it matters:** The notice reads "Showing your 50 most recent invoices", and
+the query orders by `issueDate desc, createdAt desc`. Those are different
+questions. An invoice created today but dated last year sorts near the bottom, so
+a user past the cap who back-dates an invoice can save it, be told the save
+worked, and then not find it in a list that claims to show their most recent
+work.
+
+Only reachable past 50 invoices, which is why it is P3 and not higher, and the
+cap itself is a recorded decision rather than an oversight (see the archived
+feature 9 spec). The wording is the part that misleads: it describes a sort the
+code does not perform.
+**Suggested fix:** say what the list actually does, for example "Showing your 50
+newest invoices by issue date." When pagination lands, this notice goes away and
+the ordering becomes a control rather than a hidden rule.
+**Resolution:** Fixed 2026-08-16 by /implement. The notice now reads "Showing
+your 50 newest invoices by issue date", with a comment recording why the
+distinction matters.
+
+Not observed rendering, and worth being precise about that: the notice only
+appears once a user holds more than 50 invoices, and the local database has one.
+The cap mechanism itself was proven in the browser during feature 9 step 2 by
+seeding 56 rows; this change is the string it prints, covered by typecheck and
+build. Re-seeding to re-read one literal was not worth mutating the database for.
 
