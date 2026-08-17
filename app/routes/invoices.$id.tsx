@@ -21,6 +21,7 @@ import {
 	displayStatus,
 	invoicePermissions,
 	parseSettableStatus,
+	settableStatusOf,
 } from "~/lib/invoice-status";
 import { saveDraftEdit } from "~/lib/invoice-save.server";
 import {
@@ -68,11 +69,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 		   render would let the two disagree about what day it is. */
 		display: displayStatus(invoice.status, invoice.draft.dueDate, new Date()),
 		/* The stored status, for the control, which is a different question from
-		   the one the badge answers. Null for an invoice this feature has no
-		   business moving, which today means only a void one: nothing can produce
-		   that yet, and when feature 12 can, un-voiding is its decision to design
-		   rather than a fourth entry in a select. */
-		settableStatus: parseSettableStatus(invoice.status),
+		   the one the badge answers. Null when this invoice's status may not be
+		   moved at all, which `settableStatusOf` decides from the same permission
+		   the action checks, so the control cannot appear on an invoice the write
+		   would refuse. */
+		settableStatus: settableStatusOf(invoice.status),
 		/* Worked out here from the stored status so the component and the action
 		   read the same rule. It decides which buttons exist and whether Save
 		   does; the action asks again before it writes, because a button that is

@@ -265,7 +265,7 @@ is to soften the 502 sentence so it suggests retrying, since a render failure is
 far more often transient than permanent in this app.
 **Resolution:**
 
-### F-58 [P3] open - Two different things decide whether the status control renders
+### F-58 [P3] fixed - Two different things decide whether the status control renders
 
 **File:** app/routes/invoices.$id.tsx:272
 **Found:** 2026-08-17 by /audit (scope: current)
@@ -287,7 +287,25 @@ its name implies, supplying the control's current value:
 `{invoice.permissions.canSetStatus && invoice.settableStatus ? ...}`, or better,
 have the loader send the value only when the permission allows it so there is one
 decision rather than two that must agree.
-**Resolution:**
+
+**Resolution:** Fixed 2026-08-17 by /implement, the second way. A new
+`settableStatusOf` in `invoice-status.ts` asks `invoicePermissions` first and
+narrows second, and the loader calls it instead of `parseSettableStatus`. The
+component is untouched: `{invoice.settableStatus ? ... : null}` reads exactly as
+before, except that field's nullability is now the permission by construction
+rather than by coincidence.
+
+The two checks inside it are not the duplication this removed. One is the rule and
+one is the narrowing that satisfies the type, and the order is what matters: if
+they ever disagree the permission wins and the answer is null, which fails safe.
+
+The test that matters asserts no particular answer. It loops all four statuses and
+asserts `settableStatusOf(status) === null` exactly when `!canSetStatus`, so the
+two cannot drift apart without a failure, which is the defect this finding
+described rather than any of its symptoms.
+
+Confirmed in the browser across all four states: draft, sent, and paid each show
+the control with their own value and keep Save; void shows no control and no Save.
 
 ### F-59 [P3] open - The detail route's action is 129 lines across four intents
 
@@ -314,7 +332,7 @@ function taking `(db, userId, id, form)` and returning its result, leaving the
 action as a dispatch. Not worth doing for its own sake today.
 **Resolution:**
 
-### F-60 [P3] open - updateInvoice trusts its caller to refuse a void invoice
+### F-60 [P3] fixed - updateInvoice trusts its caller to refuse a void invoice
 
 **File:** app/lib/invoice-store.server.ts:492
 **Found:** 2026-08-17 by /audit (scope: current)
@@ -342,4 +360,26 @@ with "no such invoice", which `saveDraftEdit` turns into a 404, so it wants a
 distinguishable result; the smallest honest version is to keep the caller's message
 and treat this as the backstop that makes the rule true rather than merely
 enforced.
-**Resolution:**
+
+**Resolution:** Fixed 2026-08-17 by /implement, exactly that. `updateInvoice`
+returns null when `invoicePermissions(existing.status).canEdit` is false, using the
+status it already selects for `createdAt`. The comment records why it cannot carry
+a `where` clause instead, so nobody tries and hits the primary key violation.
+
+Proving a guard nothing can reach took a deliberate detour, and the method is worth
+keeping in mind. `saveDraftEdit` checks first, so the normal path answers with its
+sentence and never enters the new code. So `saveDraftEdit`'s check was temporarily
+neutered with `if (false && ...)`, the same save replayed, and the backstop
+observed taking over: 404 instead of the sentence, with the row still `Void Co` and
+`void` even though the posted draft carried `billTo: "REWRITTEN BY A SAVE"`. The
+edit was then reverted, confirmed by an empty `git diff --stat` for that file and by
+the sentence coming back on a repeat post.
+
+Real D1 through the real stack, which is better evidence than a fake database, and
+it is why no unit test was added: testing this properly would need a D1 fake, and
+introducing that pattern is a decision for the standards rather than something to
+slip into a P3 repair.
+
+Also checked that the guard did not break the path every edit takes: saving an
+edit to a draft still returns ok and the row reads back with the new client,
+terms, total, and line item.

@@ -3,6 +3,7 @@ import {
 	displayStatus,
 	invoicePermissions,
 	parseSettableStatus,
+	settableStatusOf,
 } from "./invoice-status";
 
 /* Local noon, so the assertions are about the date and not about which side of
@@ -160,5 +161,28 @@ describe("invoicePermissions", () => {
 		);
 
 		expect(editable).toEqual(["draft", "sent", "paid"]);
+	});
+});
+
+describe("settableStatusOf", () => {
+	it("gives back the status a user may set", () => {
+		expect(settableStatusOf("draft")).toBe("draft");
+		expect(settableStatusOf("sent")).toBe("sent");
+		expect(settableStatusOf("paid")).toBe("paid");
+	});
+
+	it("gives nothing for a void invoice, which has no control to fill", () => {
+		expect(settableStatusOf("void")).toBeNull();
+	});
+
+	/* The point of the function, rather than of any one answer. The value has to be
+	   absent exactly when the rule says no, because a value that outlived the rule
+	   is a control the action would refuse (F-58). */
+	it("is null exactly when canSetStatus is false", () => {
+		for (const status of ["draft", "sent", "paid", "void"] as const) {
+			expect(settableStatusOf(status) === null).toBe(
+				!invoicePermissions(status).canSetStatus,
+			);
+		}
 	});
 });

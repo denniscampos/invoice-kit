@@ -102,6 +102,27 @@ export function invoicePermissions(status: InvoiceStatus): InvoicePermissions {
 	};
 }
 
+/* The value a status control should show, or null when there should be no
+   control.
+
+   The permission is asked first and the narrowing second, and the order is the
+   whole point (F-58). These used to be computed side by side: the component read
+   a narrowed value and the action read the permission, two answers to one
+   question, which is how F-54 happened one layer down. Now the value cannot
+   exist when the rule says no, so a component cannot render a control the action
+   will refuse.
+
+   The second check is not a duplicate of the first. `canSetStatus` is the rule;
+   `parseSettableStatus` is what proves to the type system that a status a user
+   may set is one of the three the control can offer. If the two ever disagree,
+   the permission wins and this returns null, which is the direction that fails
+   safe. */
+export function settableStatusOf(status: InvoiceStatus): SettableStatus | null {
+	if (!invoicePermissions(status).canSetStatus) return null;
+
+	return parseSettableStatus(status);
+}
+
 /* Takes the day rather than reading the clock, so a caller decides what "now"
    means and the tests need no timer faking.
 

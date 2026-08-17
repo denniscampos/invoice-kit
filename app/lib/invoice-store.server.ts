@@ -1,4 +1,7 @@
-import type { SettableStatus } from "~/lib/invoice-status";
+import {
+	invoicePermissions,
+	type SettableStatus,
+} from "~/lib/invoice-status";
 import { lineItemTotal } from "~/lib/money";
 import type {
 	InvoiceDraft,
@@ -496,6 +499,21 @@ export async function updateInvoice(
 		.first<Pick<InvoiceRow, "createdAt" | "status">>();
 
 	if (!existing) return null;
+
+	/* The rule about what may be rewritten, asked here as well as in
+	   `saveDraftEdit`, which is the only caller and does check first (F-60).
+
+	   The other three writes carry their rule in their own `where`; this one
+	   cannot, because it deletes the row and re-inserts it in one batch, so a
+	   delete that matched nothing would be followed by an insert of an id that
+	   still exists, turning a silent refusal into a primary key violation. The
+	   status it already read is the next best place.
+
+	   Null rather than a distinct result, which collapses this with "no such
+	   invoice" and gets a 404 from the route. The sentence a user actually reads
+	   comes from `saveDraftEdit`; this only answers a caller that did not ask, and
+	   a 404 is a safe answer for one of those. */
+	if (!invoicePermissions(existing.status).canEdit) return null;
 
 	const pair = draftToRows(draft, userId, id, now, existing.createdAt);
 
