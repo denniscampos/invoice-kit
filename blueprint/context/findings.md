@@ -113,150 +113,6 @@ separate templates.
 
 **Resolution:**
 
-### F-45 [P2] closed - The dashboard cannot be reached from a phone
-
-**File:** app/components/AppBar.tsx:47
-**Found:** 2026-08-16 by /implement (feature 9, step 3)
-**Why it matters:** The nav is hidden below `sm`, so a signed-in user on a phone
-has no link to `/invoices` from anywhere in the app. They can still get there by
-typing the URL, and the page itself works fine at 320px, but nothing on screen
-leads to it. Feature 9's whole point is that a saved invoice can be found again,
-and on a phone it can only be found by someone who already knows the address.
-
-Measured rather than guessed. With the nav removed, the editor's bar is
-`scrollWidth` 305 in a `clientWidth` of 305: exactly full, no spare pixels. Save
-(52px) and Download PDF (112px) take 164px of it. The two nav items need 146px
-between them, which puts the header at 451px and scrolls the page sideways, which
-is F-35 returning. So this is not a styling slip; the row has no room, and
-something has to leave it before anything can join.
-
-The brand mark was made a link to `/` in the same step, which costs no width, so
-the reverse trip (dashboard back to editor) does work on a phone. Only the
-outbound one is missing.
-**Suggested fix:** free the width first, then spend it. Shortening Download PDF
-to "PDF" below `sm` returns about 62px, which is enough for an icon-only Invoices
-link (~32px). Both are one line behind a breakpoint. The alternative is to stop
-treating the bar as a single row on a phone and give the app a real mobile nav,
-which is worth doing once feature 11 adds the detail view and there is more than
-one destination to reach.
-
-**Accepted for now by the user (2026-08-16):** desktop is the working surface
-today, and the fix reaches into feature 5's Download button, which is outside
-feature 9's spec. Revisit at feature 11.
-
-**Resolution:** Fixed 2026-08-17 by /implement, after feature 11 landed and made
-it matter more: the dashboard became the front door to every saved invoice, and
-the detail page inherited the same completely full bar.
-
-Re-measured rather than working from the numbers above, because the bar changed.
-At 320px the actions block is 252px on both `/` and `/invoices/:id` (Sign out 72,
-Save ~52, Download PDF ~112), and `/invoices` has ~248px spare. Shortening
-Download PDF to "PDF" below `sm` returns about 60px, which buys one icon-sized
-link and not two text ones, so the nav now shows Editor from `sm` up and Invoices
-at every width, icon-only below `sm`. One entry is enough because the brand mark
-is already a link to `/`: the return trip worked and only the outbound one was
-missing.
-
-Proven in the browser at 320px: the Invoices link is present and 32px wide on all
-three pages, clicking it reaches the dashboard, and
-`document.documentElement.scrollWidth` still equals `clientWidth` everywhere (`/`
-305/305, `/invoices/:id` 305/305, `/invoices` 320/320). The accessibility tree
-reads `link "Invoices"` rather than an unnamed icon, and the download button
-keeps `button "Download PDF"` while showing "PDF", which is what WCAG's Label in
-Name asks for. At 1440px nothing moved: Editor 68px, Invoices 87px, icon hidden,
-full label. Signed out, `curl` finds no `href="/invoices"` anywhere in the page.
-
-**Closed 2026-08-17 by /audit (scope: full).** Re-read `AppBar.tsx:46-70` and
-`DownloadPdfButton.tsx:89-106` against the new code. The gap is gone and the
-mechanism is sound rather than lucky: `cn` runs tailwind-merge, and `className`
-is passed last, so the Editor entry's `hidden sm:block` wins over the base
-`flex` and the entry really is absent below `sm`. The `sr-only sm:not-sr-only`
-pairing is the same one the brand wordmark already used, so the link keeps its
-name at every width.
-
-The repair did introduce one small thing, filed separately as F-50 rather than
-held against this one: the button's `aria-label` is fixed while its visible text
-changes during a render.
-
-Also confirmed the deployed build carries it (version `1707e71f`): the production
-editor page serves `aria-label="Download PDF"` with both label spans, and no
-`/invoices` link for a signed-out visitor.
-
-### F-46 [P2] closed - A signed-in user's PDF download is throttled as if anonymous
-
-**File:** app/routes/invoice.pdf.tsx:87
-**Found:** 2026-08-16 by /audit (scope: full)
-**Why it matters:** The overview's access tier table reads "Download the PDF -
-anonymous: yes, rate limited; signed in: yes". The route does not implement that
-split. There is no `getUser` call anywhere in the file, so every caller passes
-through `PDF_LIMITER` at two requests a minute per IP, the shared
-`PDF_GLOBAL_LIMITER` at five a minute for everyone together, and the 120-render
-daily quota. `DownloadPdfButton` posts here for both tiers, so a signed-in user
-downloading a third invoice inside a minute is told "Too many invoice downloads
-from here. Try again in a minute."
-
-The daily quota being shared is deliberate and documented at
-render-quota.server.ts:12. The per-IP burst limit applying to accounts is not
-mentioned anywhere, and it is the one a real user meets first: sending three
-invoices in one sitting is ordinary work, not abuse.
-
-Worse in an office than at home. The limiter keys on `CF-Connecting-IP`, so
-everyone behind one NAT shares the two-per-minute bucket regardless of who is
-signed in as whom.
-**Suggested fix:** resolve the session at the top of the action and skip the two
-limiters when it exists, keeping the daily quota for everyone so an account
-cannot drain the day's browser time either. Feature 11 adds `/invoices/:id/pdf`
-for saved invoices and is the natural place to settle which guards belong to
-which tier; the anonymous route keeps every guard it has today.
-
-**Resolution:** Fixed 2026-08-17 by /implement, as suggested. An `isSignedIn`
-helper resolves the session at the top of the action and the two limiters run
-only when there is none. The daily quota stays for everyone, and the size guards,
-parsing, validation, ordering, and every status code are untouched. Feature 11
-did not add `/invoices/:id/pdf` after all, and deliberately (see that archive), so
-this landed as its own repair rather than alongside a new route.
-
-A failed session lookup answers "not signed in", so an unreadable session costs
-the caller the anonymous tier's throttle rather than handing anyone the
-unthrottled path, matching the fail-closed choice the other two guards make.
-
-Proven against the running app. The clearest evidence is the same body sent twice
-in the same second, with the limiter bucket already exhausted: anonymous gets 429
-"Too many invoice downloads from here" with `retry-after: 60`, and signed in gets
-400 "That is not a valid invoice draft", which also shows the later guards still
-run for it. Three signed-in renders inside one 60 second window (t+0s, t+29s,
-t+59s) all returned real PDFs, where the third would previously have been a 429.
-`render_quota` went 1 to 5 across four successful renders and three failed browser
-launches, so a signed-in render still spends exactly one daily slot and a failed
-launch still releases its own.
-
-Worth recording as a limit of the repair rather than a defect in it: three
-back-to-back signed-in downloads still fail, with 503 "Too many invoices are being
-generated right now", because the free tier starts one browser roughly every
-twenty seconds. That is Cloudflare's cadence and not this app's throttle, and it
-is already documented in `wrangler.json`. The app no longer refuses a signed-in
-user; the plan still will.
-
-**Closed 2026-08-17 by /audit (scope: full).** Re-read `invoice.pdf.tsx:59-125`.
-The anonymous path is unchanged in both order and outcome: `isSignedIn` returns
-false without a cookie, so `isThrottled` runs exactly where it always did, and
-every later guard, status code, and sentence is untouched.
-
-The one claim in the repair worth checking rather than trusting was its own
-comment, that Better Auth answers a cookie-less request without touching the
-database. It is true, and now has a source: `better-auth/dist/api/routes/session.mjs:44-45`
-reads the signed cookie and does `if (!sessionCookieToken) return null;` before
-any query. So putting the session lookup ahead of the throttle does not weaken
-the door against a flood, which was the only real risk in the change.
-
-The failure path is right too: a thrown lookup is caught and answered "not
-signed in", so the fallback is the more restrictive tier rather than the
-unthrottled one.
-
-Separately filed as F-52, not held against this: production refused only one of
-twelve rapid anonymous requests, which is looser than 2 per 60 seconds reads. It
-is a question about the limiter itself and predates this change.
-
 ### F-49 [P3] open - The number suggestion still sorts every INV- row the user owns
 
 **File:** app/lib/invoice-store.server.ts:441
@@ -291,7 +147,7 @@ ever let a user define their own numbering, since that would rework this code
 anyway.
 **Resolution:**
 
-### F-50 [P3] open - The download button's spoken name disagrees with its visible text while rendering
+### F-50 [P3] fixed - The download button's spoken name disagrees with its visible text while rendering
 
 **File:** app/components/invoice/DownloadPdfButton.tsx:97
 **Found:** 2026-08-17 by /audit (scope: full)
@@ -314,7 +170,35 @@ overclaims.
 example drop `aria-label` and give the short variant an `sr-only` companion
 ("Download"), so the accessible name is built from what is on screen in both
 states. Alternatively swap `aria-label` for the pending wording while pending.
-**Resolution:**
+
+**Resolution:** Fixed 2026-08-17 by /implement, the first way. `aria-label` is
+gone and the short variant carries an `sr-only` "Download " companion, so the
+name is computed from the content and cannot drift from it. The comment above the
+button now describes all four states rather than asserting a property that held
+in two of them.
+
+Proven by reading the accessibility tree, not the markup, which is the only thing
+that answers what a screen reader says:
+
+| Width | State | Visible | Accessible name |
+| --- | --- | --- | --- |
+| 320 | idle | `PDF` | `button "Download PDF"` |
+| 320 | rendering | `PDF...` | `button "Download PDF..." [disabled]` |
+| 1440 | idle | `Download PDF` | `button "Download PDF"` |
+| 1440 | rendering | `Preparing PDF...` | `button "Preparing PDF..." [disabled]` |
+
+Every name now contains its own visible text. Also confirmed: the button has no
+`aria-label` attribute, the `sr-only` span computes to `position: absolute` and
+so takes no width, 320px still measures 305/305 with no sideways scroll, and a
+screenshot shows only "PDF" painted in the bar.
+
+Note on how the pending state was captured, because it took three attempts and
+the technique is reusable: clicking through Playwright waits for the download to
+finish, so the pending window is already over, and dispatching the click from JS
+still lost the race. Overriding `window.fetch` with a promise that never settles
+holds the button in its pending state indefinitely, and starts no render, so both
+widths were inspected at zero Browser Rendering cost against the two slots this
+was expected to spend.
 
 ### F-51 [P3] open - The save actions accept an unbounded request body
 

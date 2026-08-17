@@ -88,18 +88,30 @@ export function DownloadPdfButton({ draft }: DownloadPdfButtonProps) {
 			) : null}
 			{/* The label shortens below `sm` because the bar has no spare width
 			    there, and the ~60px this returns is what pays for the Invoices link
-			    beside the brand mark (F-45). `aria-label` keeps the full wording for
-			    a screen reader, and contains the visible text, which is what WCAG's
-			    Label in Name asks for. */}
+			    beside the brand mark (F-45).
+
+			    The accessible name is built from this content rather than pinned with
+			    `aria-label`, so it follows the label instead of drifting from it. An
+			    `aria-label` here read "Download PDF" in every state, including the
+			    seconds when the button says it is preparing one, which is the
+			    disagreement WCAG's Label in Name is about (F-50). What a screen reader
+			    hears now: "Download PDF", "Download PDF..." while rendering, and
+			    "Preparing PDF..." at the wider width, each containing what is on
+			    screen. The `hidden` variant is display:none, so only one of the two
+			    ever reaches the accessibility tree. */}
 			<Button
 				type="button"
 				size="sm"
 				onClick={download}
 				disabled={pending}
 				aria-busy={pending}
-				aria-label="Download PDF"
 			>
-				<span className="sm:hidden">{pending ? "PDF..." : "PDF"}</span>
+				<span className="sm:hidden">
+					{/* The trailing space is inside the span on purpose: name
+					    computation joins text nodes without adding one. */}
+					<span className="sr-only">Download </span>
+					{pending ? "PDF..." : "PDF"}
+				</span>
 				<span className="hidden sm:inline">
 					{pending ? "Preparing PDF..." : "Download PDF"}
 				</span>
