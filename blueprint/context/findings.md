@@ -147,59 +147,6 @@ ever let a user define their own numbering, since that would rework this code
 anyway.
 **Resolution:**
 
-### F-50 [P3] fixed - The download button's spoken name disagrees with its visible text while rendering
-
-**File:** app/components/invoice/DownloadPdfButton.tsx:97
-**Found:** 2026-08-17 by /audit (scope: full)
-**Why it matters:** Introduced by the F-45 repair. The button now carries a fixed
-`aria-label="Download PDF"` so the short "PDF" label below `sm` still reads
-properly. That works while the button is idle, where the accessible name contains
-the visible text and WCAG's Label in Name is satisfied.
-
-It stops being true during a render. The visible text becomes "Preparing PDF..."
-or "PDF..." while the accessible name stays "Download PDF", so a speech-input
-user saying what they see no longer matches the control, and a screen reader user
-is told the button is "Download PDF, busy" rather than that it is preparing
-something. The comment above the button claims the WCAG property without the
-qualifier, which is the part that would mislead the next reader.
-
-Small: `aria-busy` still conveys the state, and the pending window is a few
-seconds. Filed because the repair introduced it and because the comment
-overclaims.
-**Suggested fix:** move the label into the element rather than duplicating it, for
-example drop `aria-label` and give the short variant an `sr-only` companion
-("Download"), so the accessible name is built from what is on screen in both
-states. Alternatively swap `aria-label` for the pending wording while pending.
-
-**Resolution:** Fixed 2026-08-17 by /implement, the first way. `aria-label` is
-gone and the short variant carries an `sr-only` "Download " companion, so the
-name is computed from the content and cannot drift from it. The comment above the
-button now describes all four states rather than asserting a property that held
-in two of them.
-
-Proven by reading the accessibility tree, not the markup, which is the only thing
-that answers what a screen reader says:
-
-| Width | State | Visible | Accessible name |
-| --- | --- | --- | --- |
-| 320 | idle | `PDF` | `button "Download PDF"` |
-| 320 | rendering | `PDF...` | `button "Download PDF..." [disabled]` |
-| 1440 | idle | `Download PDF` | `button "Download PDF"` |
-| 1440 | rendering | `Preparing PDF...` | `button "Preparing PDF..." [disabled]` |
-
-Every name now contains its own visible text. Also confirmed: the button has no
-`aria-label` attribute, the `sr-only` span computes to `position: absolute` and
-so takes no width, 320px still measures 305/305 with no sideways scroll, and a
-screenshot shows only "PDF" painted in the bar.
-
-Note on how the pending state was captured, because it took three attempts and
-the technique is reusable: clicking through Playwright waits for the download to
-finish, so the pending window is already over, and dispatching the click from JS
-still lost the race. Overriding `window.fetch` with a promise that never settles
-holds the button in its pending state indefinitely, and starts no render, so both
-widths were inspected at zero Browser Rendering cost against the two slots this
-was expected to spend.
-
 ### F-51 [P3] open - The save actions accept an unbounded request body
 
 **File:** app/routes/editor.tsx:52
@@ -285,4 +232,114 @@ defensible even with no consumer today, and feature 12 may well import it.
 **Suggested fix:** either drop the `export` until something outside the module
 needs it, or add the handful of assertions that make the archived claim true.
 Not both, and neither is urgent.
+**Resolution:**
+
+### F-57 [P3] open - A render that is merely queued is reported as a render that failed
+
+**File:** app/routes/invoice.pdf.tsx:96
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** `isOutOfBrowserQuota` decides between two very different
+messages by matching the error text: `message.includes("429") || /rate limit/i`.
+When it matches, the caller is told "Too many invoices are being generated right
+now. Try again in a moment", which is true and actionable. When it does not, they
+get 502 "The invoice could not be rendered right now", which reads like the
+document is broken.
+
+Observed during feature 12: a download returned 502, a retry on the same invoice
+seconds later returned a 90KB PDF, and the day's render count was 6 out of a cap
+under 150, so neither the app's quota nor the invoice was the problem. The
+transient nature is confirmed. What is inferred, and worth saying plainly, is the
+cause: most likely the free tier's one-browser-every-twenty-seconds cadence
+arriving with wording this predicate does not recognise. The error text itself was
+not captured, because the dev server's console output was not being collected at
+the time.
+
+The cost is a user who waits twenty seconds being told to go away instead. Third
+time a text-matched Cloudflare error has needed a special case in this file, the
+other two being the quota check itself and the duplicate-number match in
+`invoice-save.server.ts`.
+**Suggested fix:** capture the real message first, from `wrangler tail` or a
+local log, before widening the predicate; guessing at more strings to match is how
+this stays fragile. If the wording turns out to be unstable, the honest fallback
+is to soften the 502 sentence so it suggests retrying, since a render failure is
+far more often transient than permanent in this app.
+**Resolution:**
+
+### F-58 [P3] open - Two different things decide whether the status control renders
+
+**File:** app/routes/invoices.$id.tsx:272
+**Found:** 2026-08-17 by /audit (scope: current)
+**Why it matters:** The loader now sends both `settableStatus` (the stored status
+narrowed to the three a user may choose, or null) and `permissions.canSetStatus`.
+The component gates the control on the first: `{invoice.settableStatus ? <StatusControl .../> : null}`.
+The action gates the write on the second.
+
+They agree today, because both reduce to "is this invoice void". That is one rule
+answered in two places, which is the exact shape that produced F-54: a decision
+made outside `invoicePermissions` drifting from the one inside it.
+
+Nothing misbehaves now. What would misbehave is the next change to the rule.
+Freeze status changes on paid invoices, say, and `canSetStatus` goes false while
+`parseSettableStatus("paid")` still returns `"paid"`, so the control renders and
+the action refuses it: a dropdown that does nothing.
+**Suggested fix:** gate on the permission and let `settableStatus` do only the job
+its name implies, supplying the control's current value:
+`{invoice.permissions.canSetStatus && invoice.settableStatus ? ...}`, or better,
+have the loader send the value only when the permission allows it so there is one
+decision rather than two that must agree.
+**Resolution:**
+
+### F-59 [P3] open - The detail route's action is 129 lines across four intents
+
+**File:** app/routes/invoices.$id.tsx:85
+**Found:** 2026-08-17 by /audit (scope: current)
+**Why it matters:** The coding standards ask for functions under 50 lines when
+possible. Measured: `action` is 129, `loader` 36, `SavedInvoiceEditor` 80,
+`ErrorBoundary` 24, in a 329 line file.
+
+The action grew a branch per feature: feature 11 wrote the save, feature 10 added
+`status`, feature 12 added `delete` and `void`, and today's fix added a status read
+and a raced-write answer to each. No single step was unreasonable, which is how it
+got here without anyone deciding it should.
+
+It still reads linearly and each branch is independently comprehensible, so this
+is a size observation rather than a defect. The trigger to act is the next intent,
+and the shape of all four is now identical enough to make the extraction obvious:
+read the status, ask `invoicePermissions`, write, report a raced write.
+
+`SavedInvoiceEditor` at 80 lines was considered and is not filed: it is nearly all
+JSX, where the 50 line guide reads as being about logic.
+**Suggested fix:** when a fifth intent arrives, give each one a small named
+function taking `(db, userId, id, form)` and returning its result, leaving the
+action as a dispatch. Not worth doing for its own sake today.
+**Resolution:**
+
+### F-60 [P3] open - updateInvoice trusts its caller to refuse a void invoice
+
+**File:** app/lib/invoice-store.server.ts:492
+**Found:** 2026-08-17 by /audit (scope: current)
+**Why it matters:** After today's fix, three of the four status-touching writes
+carry their rule in their own `where`: `setInvoiceStatus` refuses a void invoice,
+`voidInvoice` requires a sent one, `deleteInvoice` requires a draft.
+`updateInvoice` is the exception. Its guard lives entirely in `saveDraftEdit`,
+which checks `canEdit` before calling it.
+
+That is safe today because `saveDraftEdit` is the only caller and it does check.
+It is also the arrangement F-54 was: a rule held by the caller rather than by the
+write. A second caller that forgets makes a void invoice rewritable, and the body
+is the part voiding exists to freeze.
+
+`updateInvoice` cannot simply take a `where` condition, which is worth recording
+so nobody tries: it deletes the row and re-inserts it in one batch, so a delete
+that matched nothing would be followed by an insert of an id that still exists,
+turning a silent refusal into a primary key violation.
+
+It does not need one. It already reads the status for a different reason,
+`select createdAt, status`, and that value is in hand three lines before the write.
+**Suggested fix:** have `updateInvoice` refuse when
+`!invoicePermissions(existing.status).canEdit`. Returning `null` would collapse it
+with "no such invoice", which `saveDraftEdit` turns into a 404, so it wants a
+distinguishable result; the smallest honest version is to keep the caller's message
+and treat this as the backstop that makes the rule true rather than merely
+enforced.
 **Resolution:**

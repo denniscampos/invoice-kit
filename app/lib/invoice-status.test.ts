@@ -103,6 +103,7 @@ describe("invoicePermissions", () => {
 	it("lets a draft be deleted but not voided", () => {
 		expect(invoicePermissions("draft")).toEqual({
 			canEdit: true,
+			canSetStatus: true,
 			canVoid: false,
 			canDelete: true,
 		});
@@ -113,6 +114,7 @@ describe("invoicePermissions", () => {
 	it("lets a sent invoice be voided but not deleted", () => {
 		expect(invoicePermissions("sent")).toEqual({
 			canEdit: true,
+			canSetStatus: true,
 			canVoid: true,
 			canDelete: false,
 		});
@@ -123,20 +125,33 @@ describe("invoicePermissions", () => {
 	it("lets a paid invoice be edited and nothing else", () => {
 		expect(invoicePermissions("paid")).toEqual({
 			canEdit: true,
+			canSetStatus: true,
 			canVoid: false,
 			canDelete: false,
 		});
 	});
 
 	/* The row that matters. A void invoice permits nothing at all, and it is the
-	   only status in the app that denies editing: a record that can be rewritten
-	   is not the kept record voiding exists to leave behind. */
+	   only status in the app that denies anything: a record that can be rewritten,
+	   or moved back out of void, is not the kept record voiding exists to leave
+	   behind. `canSetStatus` is here because it was missing in practice, not in
+	   theory: the status intent could un-void an invoice until F-54. */
 	it("permits nothing at all on a void invoice", () => {
 		expect(invoicePermissions("void")).toEqual({
 			canEdit: false,
+			canSetStatus: false,
 			canVoid: false,
 			canDelete: false,
 		});
+	});
+
+	it("freezes a void invoice against both writes at once", () => {
+		const frozen = (["draft", "sent", "paid", "void"] as const).filter(
+			(status) => !invoicePermissions(status).canSetStatus,
+		);
+
+		expect(frozen).toEqual(["void"]);
+		expect(invoicePermissions("void").canEdit).toBe(false);
 	});
 
 	it("denies editing for void and only for void", () => {

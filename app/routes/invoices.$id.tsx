@@ -88,28 +88,52 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
 	const form = await request.formData();
 
-	/* Two things post here now, so each says which it is rather than being told
-	   apart by which fields it brought. An intent nobody recognises is refused,
-	   never allowed to fall through to the save path. */
+	/* Which of the writes below this is. An explicit field rather than a guess
+	   from which values the form happened to bring, and an intent nobody
+	   recognises is refused rather than falling through to any of them. */
 	const intent = form.get("intent");
 
+	/* Every write here checks the stored status, then writes with that same rule
+	   in its own `where`. When the check passes and the write still matches
+	   nothing, the invoice moved between the two statements, so this is what the
+	   user is told rather than a success they did not get. */
+	const changedUnderneath = {
+		ok: false as const,
+		error: "This invoice changed while you were looking at it. Reload and try again.",
+	};
+
 	if (intent === "status") {
-		const status = parseSettableStatus(form.get("status"));
+		const next = parseSettableStatus(form.get("status"));
 
 		/* The select cannot produce anything else, so this is about requests that
-		   did not come from it: `void` belongs to feature 12, and junk belongs
+		   did not come from it: `void` belongs to the void action, and junk belongs
 		   nowhere. */
-		if (!status) {
+		if (!next) {
 			return {
 				ok: false as const,
 				error: "That is not a status an invoice can be set to.",
 			} satisfies StatusResult;
 		}
 
-		const changed = await setInvoiceStatus(env.DB, user.id, params.id, status);
-		if (!changed) throw new Response("Not found", { status: 404 });
+		const status = await getInvoiceStatus(env.DB, user.id, params.id);
+		if (status === null) throw new Response("Not found", { status: 404 });
 
-		return { ok: true as const, status } satisfies StatusResult;
+		/* F-54: this branch used to write without asking, so a void invoice could
+		   be posted back to paid and, because editing follows the stored status,
+		   became rewritable again. The select is hidden on a void invoice, and that
+		   was all that stood in the way. */
+		if (!invoicePermissions(status).canSetStatus) {
+			return {
+				ok: false as const,
+				error:
+					"This invoice is void. Its status is part of the record and cannot be changed.",
+			} satisfies StatusResult;
+		}
+
+		const changed = await setInvoiceStatus(env.DB, user.id, params.id, next);
+		if (!changed) return changedUnderneath satisfies StatusResult;
+
+		return { ok: true as const, status: next } satisfies StatusResult;
 	}
 
 	/* Both removal paths read the stored status and decide from that. What the
@@ -130,9 +154,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 			};
 		}
 
-		await deleteInvoice(env.DB, user.id, params.id);
+		const deleted = await deleteInvoice(env.DB, user.id, params.id);
 
-		// Its line items go with it, by cascade.
+		/* Not a redirect: it stopped being a draft while this was in flight, so
+		   nothing was deleted and saying "gone" would be a lie. */
+		if (!deleted) return changedUnderneath;
+
+		// Its line items went with it, by cascade.
 		throw redirect("/invoices");
 	}
 
@@ -150,7 +178,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 			};
 		}
 
-		await voidInvoice(env.DB, user.id, params.id);
+		const voided = await voidInvoice(env.DB, user.id, params.id);
+		if (!voided) return changedUnderneath;
 
 		// Stays on the page: the invoice still exists, which is the whole point.
 		return { ok: true as const };

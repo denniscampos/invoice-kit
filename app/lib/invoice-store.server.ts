@@ -521,43 +521,28 @@ export async function updateInvoice(
 	return toSavedInvoice(pair.invoice, pair.lineItems);
 }
 
-/* The one statement that moves a status.
+/* The three status writes below each carry the rule they are allowed to break in
+   their own `where` clause, rather than sharing one `update` behind a check the
+   caller made a statement earlier (F-56). Two D1 statements are not atomic, so a
+   status that moved in between was previously acted on with a stale permission.
 
-   Private, and it takes the whole `InvoiceStatus`, so the two exported callers
-   can each narrow what they will accept: `setInvoiceStatus` to the three a user
-   may choose from a menu, `voidInvoice` to the one word that is not on it. One
-   copy of the SQL, two doors with different locks.
+   That is also why the private helper these two used to share is gone: the whole
+   point of it was one copy of the SQL, and the clauses now differ on purpose.
 
-   Separate from `updateInvoice` on purpose: that one replaces the whole invoice
-   from a draft and deliberately preserves whatever status the row already had,
-   so saving an edit can never quietly un-send an invoice. This is the other
-   half, the only write allowed to move it. */
-async function writeStatus(
-	db: D1Database,
-	userId: string,
-	id: string,
-	status: InvoiceStatus,
-	now: string,
-): Promise<boolean> {
-	const result = await db
-		.prepare(
-			`update invoice set status = ?1, updatedAt = ?2
-			 where id = ?3 and userId = ?4`,
-		)
-		.bind(status, now, id, userId)
-		.run();
+   All of them are separate from `updateInvoice`, which replaces an invoice from a
+   draft and deliberately preserves whatever status the row already had, so saving
+   an edit can never quietly un-send an invoice.
 
-	return result.meta.changes > 0;
-}
+   False from any of them means the row did not match, either because it is not
+   this user's, or because it is gone, or because it was not in the state the rule
+   requires. The caller reads the status first so it can tell the user which. */
 
 /* Sets the status to one a user may choose.
 
    `SettableStatus` rather than `InvoiceStatus` in the signature, so a caller
-   cannot pass `void` and have it typecheck.
-
-   False means no row matched, which is the same "not this user's, or gone"
-   answer `getInvoice` and `updateInvoice` give, and callers turn it into the
-   same 404. */
+   cannot pass `void` and have it typecheck. `and status != 'void'` is the other
+   direction of the same rule: a void invoice is frozen and cannot be moved back
+   out, which is exactly what F-54 was. */
 export async function setInvoiceStatus(
 	db: D1Database,
 	userId: string,
@@ -565,7 +550,15 @@ export async function setInvoiceStatus(
 	status: SettableStatus,
 	now: string = new Date().toISOString(),
 ): Promise<boolean> {
-	return writeStatus(db, userId, id, status, now);
+	const result = await db
+		.prepare(
+			`update invoice set status = ?1, updatedAt = ?2
+			 where id = ?3 and userId = ?4 and status != 'void'`,
+		)
+		.bind(status, now, id, userId)
+		.run();
+
+	return result.meta.changes > 0;
 }
 
 /* Voids an invoice: the removal path for one whose number is already with a
@@ -574,14 +567,22 @@ export async function setInvoiceStatus(
    Its own function rather than a fourth option on `setInvoiceStatus`, because it
    is not a note about what happened to a document, it is the end of the
    document, and the caller that may do it is not the caller that may set the
-   other three. */
+   other three. Only a sent invoice qualifies, and the `where` says so. */
 export async function voidInvoice(
 	db: D1Database,
 	userId: string,
 	id: string,
 	now: string = new Date().toISOString(),
 ): Promise<boolean> {
-	return writeStatus(db, userId, id, "void", now);
+	const result = await db
+		.prepare(
+			`update invoice set status = 'void', updatedAt = ?1
+			 where id = ?2 and userId = ?3 and status = 'sent'`,
+		)
+		.bind(now, id, userId)
+		.run();
+
+	return result.meta.changes > 0;
 }
 
 /* Just the status, for deciding what may be done to an invoice.
@@ -603,8 +604,10 @@ export async function getInvoiceStatus(
 	return row?.status ?? null;
 }
 
-/* Deletes an invoice outright, which only a draft qualifies for; the caller
-   checks that against the stored status.
+/* Deletes an invoice outright, which only a draft qualifies for. The rule is in
+   the `where` rather than only in the caller, so nothing can slip between the
+   check and the delete: a sent invoice's record survives even if its status
+   changed a millisecond ago.
 
    One row, no batch. `line_item.invoiceId references invoice (id) on delete
    cascade` and D1 enforces it, verified against the local database by inserting
@@ -617,7 +620,9 @@ export async function deleteInvoice(
 	id: string,
 ): Promise<boolean> {
 	const result = await db
-		.prepare(`delete from invoice where id = ?1 and userId = ?2`)
+		.prepare(
+			`delete from invoice where id = ?1 and userId = ?2 and status = 'draft'`,
+		)
 		.bind(id, userId)
 		.run();
 

@@ -53,16 +53,28 @@ export function parseSettableStatus(value: unknown): SettableStatus | null {
 
    The whole matrix:
 
-     draft   edit yes   void no    delete YES
-     sent    edit yes   void YES   delete no
-     paid    edit yes   void no    delete no
-     void    edit NO    void no    delete no
+     draft   edit yes   setStatus yes   void no    delete YES
+     sent    edit yes   setStatus yes   void YES   delete no
+     paid    edit yes   setStatus yes   void no    delete no
+     void    edit NO    setStatus NO    void no    delete no
 
-   `canEdit` is false for exactly one status, and that is the only place in this
-   app where a status decides anything beyond what a badge says. It earns it:
-   voiding exists so a cancelled invoice is kept, and a record that can still be
-   rewritten is not kept. Every other cell only picks which of the two removal
-   paths an invoice qualifies for, which is the point of feature 12.
+   A void invoice is frozen, and that is the only place in this app where a
+   status decides anything beyond what a badge says. It earns it: voiding exists
+   so a cancelled invoice is kept, and a record that can still be rewritten, or
+   moved back out of void, is not kept. Every other cell only picks which of the
+   two removal paths an invoice qualifies for, which is the point of feature 12.
+
+   `canEdit` and `canSetStatus` have the same answer today and are still two
+   flags, because they are two questions: may the body be rewritten, and may the
+   recorded status move. They agree only because `void` is currently the one
+   terminal state, so both are derived from that single fact rather than written
+   out twice. A later feature that freezes one without the other changes one
+   line here instead of hunting for the call sites.
+
+   F-54 is why `canSetStatus` exists: the status intent shipped before this
+   function did and answered to nobody, so a void invoice could be posted back to
+   paid, and because `canEdit` follows the stored status, that made it editable
+   again.
 
    Deleting is for a draft, because nobody outside has seen it. Voiding is for a
    sent one, because its number is already with a client and a hole in the
@@ -74,13 +86,17 @@ export function parseSettableStatus(value: unknown): SettableStatus | null {
    rather than a claim about history. */
 export type InvoicePermissions = {
 	canEdit: boolean;
+	canSetStatus: boolean;
 	canVoid: boolean;
 	canDelete: boolean;
 };
 
 export function invoicePermissions(status: InvoiceStatus): InvoicePermissions {
+	const frozen = status === "void";
+
 	return {
-		canEdit: status !== "void",
+		canEdit: !frozen,
+		canSetStatus: !frozen,
 		canVoid: status === "sent",
 		canDelete: status === "draft",
 	};
