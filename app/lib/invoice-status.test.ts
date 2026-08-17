@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { displayStatus, parseSettableStatus } from "./invoice-status";
+import {
+	displayStatus,
+	invoicePermissions,
+	parseSettableStatus,
+} from "./invoice-status";
 
 /* Local noon, so the assertions are about the date and not about which side of
    midnight a timezone offset lands on. `toIsoDate` reads local calendar fields,
@@ -89,5 +93,57 @@ describe("parseSettableStatus", () => {
 		expect(parseSettableStatus(0)).toBeNull();
 		expect(parseSettableStatus(["sent"])).toBeNull();
 		expect(parseSettableStatus({ status: "sent" })).toBeNull();
+	});
+});
+
+describe("invoicePermissions", () => {
+	/* A case per status, all three flags each, so the matrix is pinned rather than
+	   sampled. Every one of these is a rule some later feature could quietly
+	   loosen. */
+	it("lets a draft be deleted but not voided", () => {
+		expect(invoicePermissions("draft")).toEqual({
+			canEdit: true,
+			canVoid: false,
+			canDelete: true,
+		});
+	});
+
+	/* The number is already with a client, so the record stays and the invoice is
+	   voided instead of removed. */
+	it("lets a sent invoice be voided but not deleted", () => {
+		expect(invoicePermissions("sent")).toEqual({
+			canEdit: true,
+			canVoid: true,
+			canDelete: false,
+		});
+	});
+
+	/* Paid keeps editing and nothing else. Being paid and being cancelled
+	   contradict each other, and the way out is feature 10's status control. */
+	it("lets a paid invoice be edited and nothing else", () => {
+		expect(invoicePermissions("paid")).toEqual({
+			canEdit: true,
+			canVoid: false,
+			canDelete: false,
+		});
+	});
+
+	/* The row that matters. A void invoice permits nothing at all, and it is the
+	   only status in the app that denies editing: a record that can be rewritten
+	   is not the kept record voiding exists to leave behind. */
+	it("permits nothing at all on a void invoice", () => {
+		expect(invoicePermissions("void")).toEqual({
+			canEdit: false,
+			canVoid: false,
+			canDelete: false,
+		});
+	});
+
+	it("denies editing for void and only for void", () => {
+		const editable = (["draft", "sent", "paid", "void"] as const).filter(
+			(status) => invoicePermissions(status).canEdit,
+		);
+
+		expect(editable).toEqual(["draft", "sent", "paid"]);
 	});
 });

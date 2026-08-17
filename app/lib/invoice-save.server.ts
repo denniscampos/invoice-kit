@@ -1,6 +1,8 @@
 import { parseDraft } from "~/lib/invoice-draft";
+import { invoicePermissions } from "~/lib/invoice-status";
 import {
 	createInvoice,
+	getInvoiceStatus,
 	invoiceNumberTaken,
 	updateInvoice,
 } from "~/lib/invoice-store.server";
@@ -113,6 +115,19 @@ export async function saveDraftEdit(
 	id: string,
 	payload: unknown,
 ): Promise<SaveResult | null> {
+	/* Asked before the draft is even parsed, because a void invoice's answer does
+	   not depend on what was posted. This is the server half of hiding the Save
+	   button: the button is a courtesy, this is the rule. */
+	const status = await getInvoiceStatus(db, userId, id);
+	if (status === null) return null;
+
+	if (!invoicePermissions(status).canEdit) {
+		return {
+			ok: false,
+			error: "This invoice is void. It is kept as a record and cannot be changed.",
+		};
+	}
+
 	const checked = await checkDraft(db, userId, payload, id);
 	if ("error" in checked) return { ok: false, error: checked.error };
 

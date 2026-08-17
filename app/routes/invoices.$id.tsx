@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { ChevronLeftIcon } from "lucide-react";
-import { isRouteErrorResponse, Link } from "react-router";
+import { isRouteErrorResponse, Link, redirect } from "react-router";
 import type { Route } from "./+types/invoices.$id";
 import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
+import { InvoiceActions } from "~/components/invoice/InvoiceActions";
 import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
 import { StatusBadge } from "~/components/invoice/StatusBadge";
@@ -16,9 +17,19 @@ import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { cloudflareContext } from "~/context";
 import { requireUser } from "~/lib/auth.server";
-import { displayStatus, parseSettableStatus } from "~/lib/invoice-status";
+import {
+	displayStatus,
+	invoicePermissions,
+	parseSettableStatus,
+} from "~/lib/invoice-status";
 import { saveDraftEdit } from "~/lib/invoice-save.server";
-import { getInvoice, setInvoiceStatus } from "~/lib/invoice-store.server";
+import {
+	deleteInvoice,
+	getInvoice,
+	getInvoiceStatus,
+	setInvoiceStatus,
+	voidInvoice,
+} from "~/lib/invoice-store.server";
 import type { InvoiceDraft } from "~/types/invoice";
 
 /* The generated type makes `loaderData` optional here precisely because this
@@ -62,6 +73,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 		   that yet, and when feature 12 can, un-voiding is its decision to design
 		   rather than a fourth entry in a select. */
 		settableStatus: parseSettableStatus(invoice.status),
+		/* Worked out here from the stored status so the component and the action
+		   read the same rule. It decides which buttons exist and whether Save
+		   does; the action asks again before it writes, because a button that is
+		   not on screen is not a guard. */
+		permissions: invoicePermissions(invoice.status),
 		draft: invoice.draft,
 	};
 }
@@ -94,6 +110,50 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 		if (!changed) throw new Response("Not found", { status: 404 });
 
 		return { ok: true as const, status } satisfies StatusResult;
+	}
+
+	/* Both removal paths read the stored status and decide from that. What the
+	   request thinks it is allowed to do is not consulted, and neither is which
+	   button happened to be on screen. */
+	if (intent === "delete") {
+		const status = await getInvoiceStatus(env.DB, user.id, params.id);
+
+		/* Already gone: the state the user asked for is the state that holds, so
+		   send them to the list rather than answer 404 about a page they were
+		   leaving anyway. */
+		if (status === null) throw redirect("/invoices");
+
+		if (!invoicePermissions(status).canDelete) {
+			return {
+				ok: false as const,
+				error: "Only a draft can be deleted. Void a sent invoice instead.",
+			};
+		}
+
+		await deleteInvoice(env.DB, user.id, params.id);
+
+		// Its line items go with it, by cascade.
+		throw redirect("/invoices");
+	}
+
+	if (intent === "void") {
+		const status = await getInvoiceStatus(env.DB, user.id, params.id);
+		if (status === null) throw new Response("Not found", { status: 404 });
+
+		if (!invoicePermissions(status).canVoid) {
+			return {
+				ok: false as const,
+				error:
+					status === "void"
+						? "This invoice is already void."
+						: "Only a sent invoice can be voided.",
+			};
+		}
+
+		await voidInvoice(env.DB, user.id, params.id);
+
+		// Stays on the page: the invoice still exists, which is the whole point.
+		return { ok: true as const };
 	}
 
 	if (intent !== "save") {
@@ -149,7 +209,12 @@ function SavedInvoiceEditor({ invoice }: { invoice: LoaderData }) {
 				actions={
 					<div className="flex items-center gap-2">
 						<SessionActions />
-						<SaveButton draft={draft} invoiceId={invoice.id} />
+						{/* A void invoice loses Save and nothing else. It still renders,
+						    still downloads, still sits in the list; it is a record now,
+						    and a record you can rewrite is not one. */}
+						{invoice.permissions.canEdit ? (
+							<SaveButton draft={draft} invoiceId={invoice.id} />
+						) : null}
 						<DownloadPdfButton draft={draft} />
 					</div>
 				}
@@ -178,12 +243,31 @@ function SavedInvoiceEditor({ invoice }: { invoice: LoaderData }) {
 					{invoice.settableStatus ? (
 						<StatusControl status={invoice.settableStatus} />
 					) : null}
+					{/* Pushed to the end of the row: the two irreversible things in this
+					    strip should not sit next to the control a user opens casually. */}
+					<div className="ml-auto">
+						<InvoiceActions
+							invoiceNumber={invoice.invoiceNumber}
+							permissions={invoice.permissions}
+						/>
+					</div>
 				</div>
 			</div>
 			<InvoiceEditorPanes
 				draft={draft}
 				onChange={patchDraft}
-				notice={<SaveError />}
+				notice={
+					invoice.permissions.canEdit ? (
+						<SaveError />
+					) : (
+						/* Why the Save button is missing, said once, where the form is.
+						   Fields still show their values so the invoice can be read. */
+						<p className="rounded-lg border bg-accent px-4 py-3 text-xs text-muted-foreground">
+							This invoice is void. It is kept as a record of what was issued
+							and can no longer be changed.
+						</p>
+					)
+				}
 			/>
 		</>
 	);

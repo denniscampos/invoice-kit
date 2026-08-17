@@ -44,6 +44,48 @@ export function parseSettableStatus(value: unknown): SettableStatus | null {
 		: null;
 }
 
+/* What may be done to an invoice in a given state.
+
+   One function rather than a status comparison at each call site, because there
+   are three of those (the loader deciding what to render, the action deciding
+   what to allow, and the component deciding what to show) and three copies of a
+   rule is how the rule stops being one.
+
+   The whole matrix:
+
+     draft   edit yes   void no    delete YES
+     sent    edit yes   void YES   delete no
+     paid    edit yes   void no    delete no
+     void    edit NO    void no    delete no
+
+   `canEdit` is false for exactly one status, and that is the only place in this
+   app where a status decides anything beyond what a badge says. It earns it:
+   voiding exists so a cancelled invoice is kept, and a record that can still be
+   rewritten is not kept. Every other cell only picks which of the two removal
+   paths an invoice qualifies for, which is the point of feature 12.
+
+   Deleting is for a draft, because nobody outside has seen it. Voiding is for a
+   sent one, because its number is already with a client and a hole in the
+   sequence is what an accountant asks about. A paid invoice is neither: being
+   paid and being cancelled contradict each other, and the instrument for that is
+   a credit note, which this app does not have. Status is freely settable
+   (feature 10), so a user who really means it can move an invoice to draft and
+   delete it; that is their call, and this rule is about the state on record
+   rather than a claim about history. */
+export type InvoicePermissions = {
+	canEdit: boolean;
+	canVoid: boolean;
+	canDelete: boolean;
+};
+
+export function invoicePermissions(status: InvoiceStatus): InvoicePermissions {
+	return {
+		canEdit: status !== "void",
+		canVoid: status === "sent",
+		canDelete: status === "draft",
+	};
+}
+
 /* Takes the day rather than reading the clock, so a caller decides what "now"
    means and the tests need no timer faking.
 
