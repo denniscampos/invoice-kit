@@ -175,6 +175,24 @@
 		background: #fff;
 	}
 
+	/* Browsers drop background colours when printing unless the reader finds the
+	   "Background graphics" checkbox, which Chrome leaves off. That takes
+	   Classic's filled table head away, and every template's paper fill with it,
+	   while the PDF keeps them because Puppeteer is told to
+	   (`printBackground: true` in the render route). Same invoice, two different
+	   documents, which is the parity feature 23 exists to hold (F-61).
+
+	   The property is inherited, so the document says it once for everything
+	   inside it. Scoped to the invoice rather than the page on purpose: the claim
+	   is that this document must print faithfully, not that every surface in the
+	   app should. `article` is what all three templates use for their root and the
+	   only one this app renders, in the preview and inside the PDF alike; a class
+	   on each template would be three edits that have to agree, which is F-23. */
+	article {
+		-webkit-print-color-adjust: exact;
+		print-color-adjust: exact;
+	}
+
 	/* Keep a row and its rule together, and never strand a heading at the foot of
 	   a page, once an invoice runs past one sheet. */
 	tr,

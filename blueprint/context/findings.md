@@ -265,48 +265,6 @@ is to soften the 502 sentence so it suggests retrying, since a render failure is
 far more often transient than permanent in this app.
 **Resolution:**
 
-### F-58 [P3] fixed - Two different things decide whether the status control renders
-
-**File:** app/routes/invoices.$id.tsx:272
-**Found:** 2026-08-17 by /audit (scope: current)
-**Why it matters:** The loader now sends both `settableStatus` (the stored status
-narrowed to the three a user may choose, or null) and `permissions.canSetStatus`.
-The component gates the control on the first: `{invoice.settableStatus ? <StatusControl .../> : null}`.
-The action gates the write on the second.
-
-They agree today, because both reduce to "is this invoice void". That is one rule
-answered in two places, which is the exact shape that produced F-54: a decision
-made outside `invoicePermissions` drifting from the one inside it.
-
-Nothing misbehaves now. What would misbehave is the next change to the rule.
-Freeze status changes on paid invoices, say, and `canSetStatus` goes false while
-`parseSettableStatus("paid")` still returns `"paid"`, so the control renders and
-the action refuses it: a dropdown that does nothing.
-**Suggested fix:** gate on the permission and let `settableStatus` do only the job
-its name implies, supplying the control's current value:
-`{invoice.permissions.canSetStatus && invoice.settableStatus ? ...}`, or better,
-have the loader send the value only when the permission allows it so there is one
-decision rather than two that must agree.
-
-**Resolution:** Fixed 2026-08-17 by /implement, the second way. A new
-`settableStatusOf` in `invoice-status.ts` asks `invoicePermissions` first and
-narrows second, and the loader calls it instead of `parseSettableStatus`. The
-component is untouched: `{invoice.settableStatus ? ... : null}` reads exactly as
-before, except that field's nullability is now the permission by construction
-rather than by coincidence.
-
-The two checks inside it are not the duplication this removed. One is the rule and
-one is the narrowing that satisfies the type, and the order is what matters: if
-they ever disagree the permission wins and the answer is null, which fails safe.
-
-The test that matters asserts no particular answer. It loops all four statuses and
-asserts `settableStatusOf(status) === null` exactly when `!canSetStatus`, so the
-two cannot drift apart without a failure, which is the defect this finding
-described rather than any of its symptoms.
-
-Confirmed in the browser across all four states: draft, sent, and paid each show
-the control with their own value and keep Save; void shows no control and no Save.
-
 ### F-59 [P3] open - The detail route's action is 129 lines across four intents
 
 **File:** app/routes/invoices.$id.tsx:85
@@ -332,54 +290,64 @@ function taking `(db, userId, id, form)` and returning its result, leaving the
 action as a dispatch. Not worth doing for its own sake today.
 **Resolution:**
 
-### F-60 [P3] fixed - updateInvoice trusts its caller to refuse a void invoice
+### F-61 [P2] fixed - Printing drops the Classic template's filled header, which the PDF keeps
 
-**File:** app/lib/invoice-store.server.ts:492
-**Found:** 2026-08-17 by /audit (scope: current)
-**Why it matters:** After today's fix, three of the four status-touching writes
-carry their rule in their own `where`: `setInvoiceStatus` refuses a void invoice,
-`voidInvoice` requires a sent one, `deleteInvoice` requires a draft.
-`updateInvoice` is the exception. Its guard lives entirely in `saveDraftEdit`,
-which checks `canEdit` before calling it.
+**File:** app/app.css:170
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** Browsers do not print background colours unless the user ticks
+"Background graphics", which Chrome leaves unchecked. The PDF endpoint does not
+have that problem because it forces the setting: `page.pdf({ printBackground:
+true })`, and the comment beside it says exactly why, "the paper and Classic's
+filled table head are backgrounds, and a print defaults to dropping them". The
+print rules added by feature 23 never answered the same question, so the two
+outputs disagree on the browser's default setting.
 
-That is safe today because `saveDraftEdit` is the only caller and it does check.
-It is also the arrangement F-54 was: a rule held by the caller rather than by the
-write. A second caller that forgets makes a void invoice rewritable, and the body
-is the part voiding exists to freeze.
+Confirmed by rendering the same Classic invoice both ways and looking at the
+result. With backgrounds on, the table header sits on its grey band; with them
+off, the band is gone and the header floats on white. The PDF operator counts
+differ by exactly one filled rectangle, 17 against 16.
 
-`updateInvoice` cannot simply take a `where` condition, which is worth recording
-so nobody tries: it deletes the row and re-inserts it in one batch, so a delete
-that matched nothing would be followed by an insert of an id that still exists,
-turning a silent refusal into a primary key violation.
+This is the parity the feature exists to keep. The overview's promise is that the
+preview, the PDF, and now the print are the same document, and for one of the
+three templates they are visibly not. Nothing is lost or wrong on the page, the
+invoice is complete and legible, and a user who finds the checkbox gets the right
+output, which is why this is P2 rather than higher.
 
-It does not need one. It already reads the status for a different reason,
-`select createdAt, status`, and that value is in hand three lines before the write.
-**Suggested fix:** have `updateInvoice` refuse when
-`!invoicePermissions(existing.status).canEdit`. Returning `null` would collapse it
-with "no such invoice", which `saveDraftEdit` turns into a 404, so it wants a
-distinguishable result; the smallest honest version is to keep the caller's message
-and treat this as the backstop that makes the rule true rather than merely
-enforced.
+Two related notes, both smaller and both fixed by the same declaration. The
+`bg-paper` fill behind every template is dropped for the same reason, invisible
+today only because `--color-paper` is `#ffffff` and the printed sheet is white
+underneath; change that token to an off-white and the PDF's sheet and the printed
+sheet stop matching. And the app page has no `.page` box, so nothing paints the
+paper colour below a short invoice the way the PDF does.
+**Suggested fix:** `print-color-adjust: exact` (with the `-webkit-` prefix for
+older engines) on the invoice document under `@media print`, which tells the
+browser to keep the backgrounds regardless of the checkbox. Scope it to the
+document rather than the page, so it says the invoice is the thing that must
+print faithfully. Then re-render the Classic template both ways and confirm the
+band survives with the setting off.
 
-**Resolution:** Fixed 2026-08-17 by /implement, exactly that. `updateInvoice`
-returns null when `invoicePermissions(existing.status).canEdit` is false, using the
-status it already selects for `createdAt`. The comment records why it cannot carry
-a `where` clause instead, so nobody tries and hits the primary key violation.
+**Resolution:** Fixed 2026-08-17 by /implement, as suggested. `article` under
+`@media print` in `app.css` carries `print-color-adjust: exact` with the
+`-webkit-` prefix beside it. The property is inherited, so the document declares
+it once for everything a template fills, and `article` is the root all three share,
+which keeps this one edit rather than three that have to agree.
 
-Proving a guard nothing can reach took a deliberate detour, and the method is worth
-keeping in mind. `saveDraftEdit` checks first, so the normal path answers with its
-sentence and never enters the new code. So `saveDraftEdit`'s check was temporarily
-neutered with `if (false && ...)`, the same save replayed, and the backstop
-observed taking over: 404 instead of the sentence, with the row still `Void Co` and
-`void` even though the posted draft carried `billTo: "REWRITTEN BY A SAVE"`. The
-edit was then reverted, confirmed by an empty `git diff --stat` for that file and by
-the sentence coming back on a repeat post.
+Proven by the reproduction inverted: the same Classic invoice rendered with
+backgrounds off went from no grey band behind the table header to the band
+present. The colour sets of the two renders, with backgrounds on and off, are now
+identical, where before one fill was missing.
 
-Real D1 through the real stack, which is better evidence than a fake database, and
-it is why no unit test was added: testing this properly would need a D1 fake, and
-introducing that pattern is a decision for the standards rather than something to
-slip into a P3 repair.
+Worth recording how nearly this was reported as a failure. The first measurement
+counted filled rectangles in the PDF and read 17 against 16 both before and after
+the fix, which looks exactly like a repair that did nothing. It was the wrong
+metric: one `re ... f` pair differs for an unrelated reason, almost certainly a
+white fill Chrome omits when backgrounds are off, since the paper is white either
+way. What settled it was a control, two identical filled boxes with the property
+on one of them, rendered with backgrounds off: the plain box was dropped and the
+`exact` box survived, which proved the renderer honours the property and therefore
+that the measurement, not the fix, was at fault. Then the colour-set diff and the
+image agreed.
 
-Also checked that the guard did not break the path every edit takes: saving an
-edit to a draft still returns ok and the row reads back with the new client,
-terms, total, and line item.
+Also checked: `/invoice/pdf` still renders one Letter page at 95,221 bytes,
+identical to the baseline taken before feature 23 touched any of this, so the rule
+riding along inside the PDF document changes nothing there.
