@@ -95,7 +95,7 @@ they get built in.
 - [x] 10. **Invoice status tracking** - mark invoices draft, sent, or paid, and show overdue derived from the due date
 - [x] 12. **Delete and void** - delete a draft invoice, or void a sent one while keeping the record
 - [x] 23. **Print** - print the invoice straight from the browser, so the one-off path does not have to spend a Browser Rendering call to put an invoice on paper
-- [ ] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account
+- [x] 8. **Draft handoff** - carry an in-progress anonymous invoice through sign-up and save it to the new account
 - [ ] 19. **Tax and discount controls** - support invoice-level taxes, discounts, and adjusted totals
 - [ ] 13. **Logo upload** - upload a logo to R2 and attach it to an invoice, stored once per user and referenced by every invoice that uses it
 - [ ] 24. **Password reset** - request a reset link by email and set a new password, via Better Auth and Cloudflare Email Service

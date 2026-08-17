@@ -10,9 +10,11 @@ import type { InvoiceDraft } from "~/types/invoice";
    A fetcher rather than a Form: the invoice is on screen and half typed, and a
    navigation would throw away scroll position and focus to tell the user
    something a button label can say. */
-/* One key, so the button in the app bar and the message beside the form are
-   reading the same submission rather than two unrelated fetchers. */
-const SAVE_FETCHER_KEY = "save-invoice";
+/* One key, so the button in the app bar, the message beside the form, and the
+   automatic draft handoff are all reading the same submission rather than
+   separate fetchers. Exported so DraftHandoff can submit through it and let this
+   component's success effect do the landing. */
+export const SAVE_FETCHER_KEY = "save-invoice";
 
 /* `invoiceId` is set on `/invoices/:id`, where the invoice already exists and
    saving edits it in place. Without it, this is the editor at `/`, where saving

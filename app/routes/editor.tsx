@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Route } from "./+types/editor";
 import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
+import { DraftHandoff } from "~/components/invoice/DraftHandoff";
 import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
 import { PrintButton } from "~/components/invoice/PrintButton";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
@@ -118,6 +119,10 @@ export default function Editor({ loaderData }: Route.ComponentProps) {
 
 	return (
 		<>
+			{/* Renders nothing; finishes an anonymous save carried through sign-up or
+			   sign-in. Mounted for both tiers so it also clears a stale intent when a
+			   visitor returns still signed out. */}
+			<DraftHandoff signedIn={signedIn} />
 			<AppBar
 				actions={
 					<div className="flex items-center gap-2">
