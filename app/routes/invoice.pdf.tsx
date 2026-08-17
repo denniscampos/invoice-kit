@@ -1,6 +1,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import type { Route } from "./+types/invoice.pdf";
 import { cloudflareContext } from "~/context";
+import { getUser } from "~/lib/auth.server";
 import { parseDraft } from "~/lib/invoice-draft";
 import {
 	buildPrintDocument,
@@ -14,17 +15,22 @@ import {
 } from "~/lib/render-quota.server";
 import { rateLimitKey, readBoundedText } from "~/lib/request.server";
 
-/* The account free render endpoint. It takes an invoice draft as JSON and
-   returns the document to print. Feature 5b keeps this route, its guards, and
-   its status codes exactly as they are, and returns a PDF instead of the HTML.
+/* The render endpoint. It takes an invoice draft as JSON and returns the
+   document to print. Feature 5b keeps this route, its guards, and its status
+   codes exactly as they are, and returns a PDF instead of the HTML.
 
    The order of the guards is the point: size before parsing, parsing before
    validation, validation before rendering. Nothing oversized or malformed
-   should reach the renderer, and in 5b nothing should reach Browser Rendering,
-   which is the slowest and most expensive call in the app.
+   should reach the renderer, and nothing should reach Browser Rendering, which
+   is the slowest and most expensive call in the app.
 
-   No session, no storage. This is the anonymous tier, so the only thing it can
-   be asked to do is draw the invoice it was handed. */
+   Reachable without an account, and it still touches no storage on anyone's
+   behalf: it draws the invoice it was handed and keeps nothing. It does read the
+   session, but only to answer one question, which of the two throttles apply
+   (F-46). The overview's tier table is the rule being implemented: the burst
+   limits are the price of being anonymous, and the daily render quota is
+   everybody's, because the account's browser time is a shared and unrefillable
+   thing that a signed-in user can exhaust just as easily. */
 
 const PLAIN_TEXT = "text/plain; charset=utf-8";
 
@@ -48,6 +54,27 @@ const THROTTLE_RETRY_AFTER_SECONDS = 60;
 /* The shared bucket's key. A constant, because the point of the second limiter
    is that everyone lands in the same one. */
 const GLOBAL_KEY = "invoice-pdf";
+
+/* Whether this request carries a session, which is the only thing this route
+   wants to know about who is asking.
+
+   A failure is answered as "no", so an unreadable session costs the caller the
+   anonymous tier's throttle rather than handing anyone the unthrottled path.
+   That is the same fail-closed call the two guards below make.
+
+   Asked before the throttle, which is otherwise the first thing this route does
+   on purpose. That ordering is not weakened by this: Better Auth answers a
+   request carrying no session cookie without going to the database, and a flood
+   is exactly that. One carrying a cookie costs a single indexed lookup, which is
+   what any signed-in request already pays. */
+async function isSignedIn(env: Env, request: Request): Promise<boolean> {
+	try {
+		return (await getUser(request, env)) !== null;
+	} catch (error) {
+		console.error("Session lookup failed on the render endpoint", error);
+		return false;
+	}
+}
 
 /* Two questions, asked in order: is this caller going too fast, and is everyone
    together going too fast. The second is only asked when the first passes, so a
@@ -82,9 +109,14 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 	/* Before the body is read, let alone rendered: a caller sending floods of
 	   large payloads should be turned away at the door rather than after being
-	   measured. Rendering is what this protects, but reading is not free either. */
+	   measured. Rendering is what this protects, but reading is not free either.
+
+	   Skipped for a signed-in user, whose downloads the overview does not rate
+	   limit. Two a minute is the right ceiling for a stranger and the wrong one
+	   for someone sending out their invoices for the week; behind an office NAT it
+	   was worse still, because the limiter keys on the IP everyone shares. */
 	try {
-		if (await isThrottled(env, request)) {
+		if (!(await isSignedIn(env, request)) && (await isThrottled(env, request))) {
 			return fail(
 				429,
 				"Too many invoice downloads from here. Try again in a minute.",

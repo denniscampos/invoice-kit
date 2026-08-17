@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ReceiptTextIcon } from "lucide-react";
 import { Link, NavLink, useRouteLoaderData } from "react-router";
 import { cn } from "~/lib/utils";
 import type { loader as rootLoader } from "~/root";
@@ -42,20 +43,29 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 				<span className="sr-only sm:not-sr-only">Invoice Kit</span>
 			</Link>
 
-			{/* Hidden below `sm`, which is where the pill it replaces was too.
-			    Measured: at 320px the editor's bar is already exactly full at 305px
-			    of 305, because Save and Download PDF take 164px between them, so a
-			    nav item of any width pushes the row off screen (F-35 again). The
-			    consequence is that a phone cannot reach the dashboard from the
-			    editor, which needs a real answer rather than a squeezed label. */}
-			<nav className="ml-1 hidden gap-0.5 sm:ml-4 sm:flex sm:gap-1">
-				<NavItem to="/" end>
+			{/* One entry on a phone, both from `sm` up.
+
+			    At 320px the editor's bar is exactly full, 305px of 305, because Sign
+			    out, Save, and Download PDF take 252px between them. Shortening
+			    Download PDF to "PDF" below `sm` returns about 60px, which buys one
+			    icon-sized link and not two text ones. Invoices is the one to spend it
+			    on: the brand mark above is already a link to `/`, so the trip back to
+			    the editor works and only the outbound trip was missing (F-45). */}
+			<nav className="ml-1 flex gap-0.5 sm:ml-4 sm:gap-1">
+				<NavItem to="/" end className="hidden sm:block">
 					Editor
 				</NavItem>
 				{/* Only for someone who has invoices to look at. A nav entry that
 				    exists to bounce a visitor to sign-in is the sign-up wall this
 				    app deliberately does not have. */}
-				{user ? <NavItem to="/invoices">Invoices</NavItem> : null}
+				{user ? (
+					<NavItem to="/invoices">
+						<ReceiptTextIcon className="size-4 sm:hidden" aria-hidden="true" />
+						{/* `sr-only` rather than `hidden`, so the link is still named
+						    "Invoices" on a phone where only the icon shows. */}
+						<span className="sr-only sm:not-sr-only">Invoices</span>
+					</NavItem>
+				) : null}
 			</nav>
 
 			{actions ? <div className="ml-auto">{actions}</div> : null}
@@ -74,10 +84,12 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 function NavItem({
 	to,
 	end,
+	className,
 	children,
 }: {
 	to: string;
 	end?: boolean;
+	className?: string;
 	children: ReactNode;
 }) {
 	return (
@@ -86,10 +98,11 @@ function NavItem({
 			end={end}
 			className={({ isActive }) =>
 				cn(
-					"rounded-md px-2 py-1.5 font-medium sm:px-3",
+					"flex items-center rounded-md px-2 py-1.5 font-medium sm:px-3",
 					isActive
 						? "bg-accent text-accent-foreground"
 						: "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+					className,
 				)
 			}
 		>

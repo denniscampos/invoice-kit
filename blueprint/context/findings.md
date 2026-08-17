@@ -113,7 +113,7 @@ separate templates.
 
 **Resolution:**
 
-### F-45 [P2] open - The dashboard cannot be reached from a phone
+### F-45 [P2] fixed - The dashboard cannot be reached from a phone
 
 **File:** app/components/AppBar.tsx:47
 **Found:** 2026-08-16 by /implement (feature 9, step 3)
@@ -143,9 +143,30 @@ one destination to reach.
 **Accepted for now by the user (2026-08-16):** desktop is the working surface
 today, and the fix reaches into feature 5's Download button, which is outside
 feature 9's spec. Revisit at feature 11.
-**Resolution:**
 
-### F-46 [P2] open - A signed-in user's PDF download is throttled as if anonymous
+**Resolution:** Fixed 2026-08-17 by /implement, after feature 11 landed and made
+it matter more: the dashboard became the front door to every saved invoice, and
+the detail page inherited the same completely full bar.
+
+Re-measured rather than working from the numbers above, because the bar changed.
+At 320px the actions block is 252px on both `/` and `/invoices/:id` (Sign out 72,
+Save ~52, Download PDF ~112), and `/invoices` has ~248px spare. Shortening
+Download PDF to "PDF" below `sm` returns about 60px, which buys one icon-sized
+link and not two text ones, so the nav now shows Editor from `sm` up and Invoices
+at every width, icon-only below `sm`. One entry is enough because the brand mark
+is already a link to `/`: the return trip worked and only the outbound one was
+missing.
+
+Proven in the browser at 320px: the Invoices link is present and 32px wide on all
+three pages, clicking it reaches the dashboard, and
+`document.documentElement.scrollWidth` still equals `clientWidth` everywhere (`/`
+305/305, `/invoices/:id` 305/305, `/invoices` 320/320). The accessibility tree
+reads `link "Invoices"` rather than an unnamed icon, and the download button
+keeps `button "Download PDF"` while showing "PDF", which is what WCAG's Label in
+Name asks for. At 1440px nothing moved: Editor 68px, Invoices 87px, icon hidden,
+full label. Signed out, `curl` finds no `href="/invoices"` anywhere in the page.
+
+### F-46 [P2] fixed - A signed-in user's PDF download is throttled as if anonymous
 
 **File:** app/routes/invoice.pdf.tsx:87
 **Found:** 2026-08-16 by /audit (scope: full)
@@ -171,7 +192,34 @@ limiters when it exists, keeping the daily quota for everyone so an account
 cannot drain the day's browser time either. Feature 11 adds `/invoices/:id/pdf`
 for saved invoices and is the natural place to settle which guards belong to
 which tier; the anonymous route keeps every guard it has today.
-**Resolution:**
+
+**Resolution:** Fixed 2026-08-17 by /implement, as suggested. An `isSignedIn`
+helper resolves the session at the top of the action and the two limiters run
+only when there is none. The daily quota stays for everyone, and the size guards,
+parsing, validation, ordering, and every status code are untouched. Feature 11
+did not add `/invoices/:id/pdf` after all, and deliberately (see that archive), so
+this landed as its own repair rather than alongside a new route.
+
+A failed session lookup answers "not signed in", so an unreadable session costs
+the caller the anonymous tier's throttle rather than handing anyone the
+unthrottled path, matching the fail-closed choice the other two guards make.
+
+Proven against the running app. The clearest evidence is the same body sent twice
+in the same second, with the limiter bucket already exhausted: anonymous gets 429
+"Too many invoice downloads from here" with `retry-after: 60`, and signed in gets
+400 "That is not a valid invoice draft", which also shows the later guards still
+run for it. Three signed-in renders inside one 60 second window (t+0s, t+29s,
+t+59s) all returned real PDFs, where the third would previously have been a 429.
+`render_quota` went 1 to 5 across four successful renders and three failed browser
+launches, so a signed-in render still spends exactly one daily slot and a failed
+launch still releases its own.
+
+Worth recording as a limit of the repair rather than a defect in it: three
+back-to-back signed-in downloads still fail, with 503 "Too many invoices are being
+generated right now", because the free tier starts one browser roughly every
+twenty seconds. That is Cloudflare's cadence and not this app's throttle, and it
+is already documented in `wrangler.json`. The app no longer refuses a signed-in
+user; the plan still will.
 
 ### F-49 [P3] open - The number suggestion still sorts every INV- row the user owns
 

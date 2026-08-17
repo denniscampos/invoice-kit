@@ -86,14 +86,23 @@ export function DownloadPdfButton({ draft }: DownloadPdfButtonProps) {
 					{error}
 				</span>
 			) : null}
+			{/* The label shortens below `sm` because the bar has no spare width
+			    there, and the ~60px this returns is what pays for the Invoices link
+			    beside the brand mark (F-45). `aria-label` keeps the full wording for
+			    a screen reader, and contains the visible text, which is what WCAG's
+			    Label in Name asks for. */}
 			<Button
 				type="button"
 				size="sm"
 				onClick={download}
 				disabled={pending}
 				aria-busy={pending}
+				aria-label="Download PDF"
 			>
-				{pending ? "Preparing PDF..." : "Download PDF"}
+				<span className="sm:hidden">{pending ? "PDF..." : "PDF"}</span>
+				<span className="hidden sm:inline">
+					{pending ? "Preparing PDF..." : "Download PDF"}
+				</span>
 			</Button>
 		</div>
 	);

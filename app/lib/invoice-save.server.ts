@@ -52,7 +52,12 @@ async function checkDraft(
 		return { error: duplicateNumberMessage(invoiceNumber) };
 	}
 
-	return { draft };
+	/* The trimmed number goes back onto the draft, so what was checked is what
+	   gets written. Storing the untyped-over version instead let "INV-0003 " past
+	   a check made against "INV-0003": the row went in with its space, where the
+	   unique index reads it as a different number, and the user ends up holding
+	   two invoices that look identically numbered. */
+	return { draft: { ...draft, invoiceNumber } };
 }
 
 /* Saves a new invoice for this user.
@@ -87,7 +92,7 @@ export async function saveDraft(
 		if (isDuplicateNumber(error)) {
 			return {
 				ok: false,
-				error: duplicateNumberMessage(draft.invoiceNumber.trim()),
+				error: duplicateNumberMessage(draft.invoiceNumber),
 			};
 		}
 
@@ -128,7 +133,7 @@ export async function saveDraftEdit(
 		if (isDuplicateNumber(error)) {
 			return {
 				ok: false,
-				error: duplicateNumberMessage(draft.invoiceNumber.trim()),
+				error: duplicateNumberMessage(draft.invoiceNumber),
 			};
 		}
 
