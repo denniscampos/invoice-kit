@@ -113,7 +113,7 @@ separate templates.
 
 **Resolution:**
 
-### F-45 [P2] fixed - The dashboard cannot be reached from a phone
+### F-45 [P2] closed - The dashboard cannot be reached from a phone
 
 **File:** app/components/AppBar.tsx:47
 **Found:** 2026-08-16 by /implement (feature 9, step 3)
@@ -166,7 +166,23 @@ keeps `button "Download PDF"` while showing "PDF", which is what WCAG's Label in
 Name asks for. At 1440px nothing moved: Editor 68px, Invoices 87px, icon hidden,
 full label. Signed out, `curl` finds no `href="/invoices"` anywhere in the page.
 
-### F-46 [P2] fixed - A signed-in user's PDF download is throttled as if anonymous
+**Closed 2026-08-17 by /audit (scope: full).** Re-read `AppBar.tsx:46-70` and
+`DownloadPdfButton.tsx:89-106` against the new code. The gap is gone and the
+mechanism is sound rather than lucky: `cn` runs tailwind-merge, and `className`
+is passed last, so the Editor entry's `hidden sm:block` wins over the base
+`flex` and the entry really is absent below `sm`. The `sr-only sm:not-sr-only`
+pairing is the same one the brand wordmark already used, so the link keeps its
+name at every width.
+
+The repair did introduce one small thing, filed separately as F-50 rather than
+held against this one: the button's `aria-label` is fixed while its visible text
+changes during a render.
+
+Also confirmed the deployed build carries it (version `1707e71f`): the production
+editor page serves `aria-label="Download PDF"` with both label spans, and no
+`/invoices` link for a signed-out visitor.
+
+### F-46 [P2] closed - A signed-in user's PDF download is throttled as if anonymous
 
 **File:** app/routes/invoice.pdf.tsx:87
 **Found:** 2026-08-16 by /audit (scope: full)
@@ -221,6 +237,26 @@ twenty seconds. That is Cloudflare's cadence and not this app's throttle, and it
 is already documented in `wrangler.json`. The app no longer refuses a signed-in
 user; the plan still will.
 
+**Closed 2026-08-17 by /audit (scope: full).** Re-read `invoice.pdf.tsx:59-125`.
+The anonymous path is unchanged in both order and outcome: `isSignedIn` returns
+false without a cookie, so `isThrottled` runs exactly where it always did, and
+every later guard, status code, and sentence is untouched.
+
+The one claim in the repair worth checking rather than trusting was its own
+comment, that Better Auth answers a cookie-less request without touching the
+database. It is true, and now has a source: `better-auth/dist/api/routes/session.mjs:44-45`
+reads the signed cookie and does `if (!sessionCookieToken) return null;` before
+any query. So putting the session lookup ahead of the throttle does not weaken
+the door against a flood, which was the only real risk in the change.
+
+The failure path is right too: a thrown lookup is caught and answered "not
+signed in", so the fallback is the more restrictive tier rather than the
+unthrottled one.
+
+Separately filed as F-52, not held against this: production refused only one of
+twelve rapid anonymous requests, which is looser than 2 per 60 seconds reads. It
+is a question about the limiter itself and predates this change.
+
 ### F-49 [P3] open - The number suggestion still sorts every INV- row the user owns
 
 **File:** app/lib/invoice-store.server.ts:441
@@ -253,4 +289,116 @@ per-user counter and stop deriving the suggestion from a scan. Revisit if a real
 account passes a few thousand invoices, or fold it into feature 22 if settings
 ever let a user define their own numbering, since that would rework this code
 anyway.
+**Resolution:**
+
+### F-50 [P3] open - The download button's spoken name disagrees with its visible text while rendering
+
+**File:** app/components/invoice/DownloadPdfButton.tsx:97
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** Introduced by the F-45 repair. The button now carries a fixed
+`aria-label="Download PDF"` so the short "PDF" label below `sm` still reads
+properly. That works while the button is idle, where the accessible name contains
+the visible text and WCAG's Label in Name is satisfied.
+
+It stops being true during a render. The visible text becomes "Preparing PDF..."
+or "PDF..." while the accessible name stays "Download PDF", so a speech-input
+user saying what they see no longer matches the control, and a screen reader user
+is told the button is "Download PDF, busy" rather than that it is preparing
+something. The comment above the button claims the WCAG property without the
+qualifier, which is the part that would mislead the next reader.
+
+Small: `aria-busy` still conveys the state, and the pending window is a few
+seconds. Filed because the repair introduced it and because the comment
+overclaims.
+**Suggested fix:** move the label into the element rather than duplicating it, for
+example drop `aria-label` and give the short variant an `sr-only` companion
+("Download"), so the accessible name is built from what is on screen in both
+states. Alternatively swap `aria-label` for the pending wording while pending.
+**Resolution:**
+
+### F-51 [P3] open - The save actions accept an unbounded request body
+
+**File:** app/routes/editor.tsx:52
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** `/invoice/pdf` is careful about this: it refuses a declared
+`content-length` over `MAX_DRAFT_BYTES` (128 KB), then measures the real bytes
+with `readBoundedText` and abandons the request the moment it passes, because "it
+must not accept an invoice large enough to be a denial-of-service payload".
+
+The two save actions do `await request.formData()` with no bound at all, at
+`editor.tsx:52` and `invoices.$id.tsx:63`, and so do the two auth forms
+(`sign-up.tsx:33`, `sign-in.tsx:30`). A posted body is buffered whole before
+anything can object.
+
+The asymmetry is the interesting part, and it runs the wrong way round for
+comfort: the guarded route is the anonymous one, and the unguarded ones sit
+behind a session that anybody can obtain, since sign-up needs no email
+verification by design. The standards say to validate every external input on
+both tiers and are explicit that no login does not mean no untrusted input.
+
+P3 rather than higher because the ceiling is low. The damage is memory in one
+isolate during buffering, Cloudflare caps request bodies well below what would
+matter, D1 refuses an oversized row anyway, and nothing expensive sits
+downstream the way Browser Rendering does behind the render endpoint. Nothing is
+lost or corrupted. Pre-existing since features 6b and 7b; not introduced by
+recent work.
+**Suggested fix:** reject on `content-length` over a documented ceiling at the top
+of each action, which is one line and catches every honest client. A full fix
+would read the body with `readBoundedText` and parse the form from the bounded
+text, which is more work because `request.formData()` cannot be fed a string;
+worth doing only if this ever looks like a real target.
+**Resolution:**
+
+### F-52 [unverified] [P3] - Production refuses far fewer requests than the configured 2 per minute
+
+**File:** wrangler.json:31
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** A lead, not a defect, and recorded so it is not lost.
+
+`PDF_LIMITER` is configured at 2 requests per 60 seconds per caller. Against the
+deployed Worker (version `1707e71f`), twelve rapid anonymous POSTs with a body
+that fails validation returned
+
+    400 400 400 400 429 400 400 400 400 400 400 400
+
+so the limiter does fire, but it let eleven of twelve through in a few seconds.
+Locally the same probe refuses every request once the bucket is full, which is
+the behaviour the config reads like.
+
+The likely explanation is that Cloudflare's rate limiting binding is approximate
+and enforced per location rather than as a strict shared counter, which would
+make this expected rather than broken. The overview calls rate limiting on this
+endpoint a deploy blocker, so the gap between "2 per minute" as written and what
+production does is worth pinning down either way.
+
+Not attributable to the F-46 repair: an anonymous request takes the same path it
+always did, and the local behaviour is unchanged.
+**Suggested fix:** nothing yet. Confirm against Cloudflare's documented semantics
+for the binding before changing any number, and if the enforcement really is
+per-colo, say so in the `wrangler.json` comment, which currently reads as though
+the limit is exact. Probing production harder costs real render quota, so this
+needs a deliberate session rather than a drive-by.
+**Resolution:**
+
+### F-53 [P3] open - toSavedInvoice is exported to nobody and covered by nothing
+
+**File:** app/lib/invoice-store.server.ts:231
+**Found:** 2026-08-17 by /audit (scope: full)
+**Why it matters:** `toSavedInvoice` is `export`ed but every caller is inside its
+own module (`createInvoice`, `getInvoice`, `updateInvoice`); no other file imports
+it. It is also untested, while the archived feature 9 spec states that
+`invoice-store.test.ts` "tests the pure mapping functions (`draftToRows`,
+`rowsToDraft`, `toSavedInvoice`)". The test file imports two of those three, so
+that sentence has been wrong since it was written.
+
+It is genuinely in-scope logic by the standards' own rule, a pure function with
+assertable inputs and outputs, and it is on the read path for every saved invoice
+the detail view opens. What it does beyond the tested `rowsToDraft` is copy five
+fields, which is why nothing has gone wrong.
+
+Marginal, and worth saying so: keeping a store module's mapper exported is
+defensible even with no consumer today, and feature 12 may well import it.
+**Suggested fix:** either drop the `export` until something outside the module
+needs it, or add the handful of assertions that make the archived claim true.
+Not both, and neither is urgent.
 **Resolution:**
