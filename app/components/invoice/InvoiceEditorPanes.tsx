@@ -34,8 +34,13 @@ export function InvoiceEditorPanes({
 	}
 
 	return (
-		<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6">
-			<div className="flex min-w-0 flex-col gap-4">
+		/* In print the two panes stop being a layout: the form goes, and what is
+		   left has to fill the paper rather than sit in a padded, capped column.
+		   The `editor:` variants above would not match a Letter page anyway, since
+		   it is narrower than that breakpoint, but the resets say so on purpose
+		   instead of relying on the arithmetic. */
+		<main className="editor:grid-cols-[minmax(420px,1fr)_minmax(520px,1.05fr)] mx-auto grid max-w-[1560px] items-start gap-6 p-6 print:block print:max-w-none print:gap-0 print:p-0">
+			<div className="flex min-w-0 flex-col gap-4 print:hidden">
 				{notice}
 				<InvoiceDetailsFields draft={draft} onChange={onChange} />
 				<LineItemsCard draft={draft} onChange={onChange} />
@@ -73,7 +78,7 @@ export function InvoiceEditorPanes({
 			    a real minimum width, and without this the whole page widens to fit
 			    it and scrolls sideways on a phone. It scrolls inside its own frame
 			    instead, which is what the frame was built for. */}
-			<div className="editor:sticky editor:top-20 min-w-0">
+			<div className="editor:sticky editor:top-20 min-w-0 print:static">
 				<PreviewPane draft={draft} onChange={onChange} />
 			</div>
 		</main>

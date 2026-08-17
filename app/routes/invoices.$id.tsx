@@ -6,6 +6,7 @@ import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
 import { InvoiceActions } from "~/components/invoice/InvoiceActions";
 import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
+import { PrintButton } from "~/components/invoice/PrintButton";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
 import { StatusBadge } from "~/components/invoice/StatusBadge";
 import {
@@ -245,6 +246,7 @@ function SavedInvoiceEditor({ invoice }: { invoice: LoaderData }) {
 						{invoice.permissions.canEdit ? (
 							<SaveButton draft={draft} invoiceId={invoice.id} />
 						) : null}
+						<PrintButton />
 						<DownloadPdfButton draft={draft} />
 					</div>
 				}
@@ -252,7 +254,9 @@ function SavedInvoiceEditor({ invoice }: { invoice: LoaderData }) {
 			{/* A strip under the bar rather than a heading inside the form column:
 			    it has to say which invoice is open regardless of which pane the user
 			    is looking at, and the panes below own their own padding. */}
-			<div className="border-b bg-card">
+			{/* The strip names the invoice for the screen; on paper the invoice names
+			    itself. */}
+			<div className="border-b bg-card print:hidden">
 				<div className="mx-auto flex max-w-[1560px] flex-wrap items-center gap-x-3 gap-y-2 px-6 py-3">
 					<Link
 						to="/invoices"

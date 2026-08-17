@@ -3,6 +3,7 @@ import type { Route } from "./+types/editor";
 import { AppBar } from "~/components/AppBar";
 import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
 import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
+import { PrintButton } from "~/components/invoice/PrintButton";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
 import { SaveNote } from "~/components/invoice/SaveNote";
 import { SessionActions } from "~/components/SessionActions";
@@ -122,6 +123,7 @@ export default function Editor({ loaderData }: Route.ComponentProps) {
 					<div className="flex items-center gap-2">
 						<SessionActions />
 						{signedIn ? <SaveButton draft={draft} /> : null}
+						<PrintButton />
 						<DownloadPdfButton draft={draft} />
 					</div>
 				}

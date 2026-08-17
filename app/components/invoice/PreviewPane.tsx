@@ -13,10 +13,13 @@ type PreviewPaneProps = {
 
 export function PreviewPane({ draft, onChange }: PreviewPaneProps) {
 	return (
-		<div className="overflow-hidden rounded-xl border shadow-sm">
+		/* On paper the frame is not a frame, it is the page. `overflow-visible`
+		   matters most: `overflow-hidden` here would clip a long invoice at the
+		   first page instead of letting it flow onto the next. */
+		<div className="overflow-hidden rounded-xl border shadow-sm print:overflow-visible print:rounded-none print:border-0 print:shadow-none">
 			{/* flex-wrap so the segments drop to a second line on a narrow screen
 			    rather than crushing the label next to them. */}
-			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-3 text-xs text-muted-foreground">
+			<div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-card px-4 py-3 text-xs text-muted-foreground print:hidden">
 				<span className="flex items-center gap-1.5">
 					<span
 						aria-hidden="true"
@@ -38,8 +41,8 @@ export function PreviewPane({ draft, onChange }: PreviewPaneProps) {
 			    way through it, so a scroll area inside a scroll area would just be in
 			    the way. 11rem covers the sticky offset, this bar, and a bottom
 			    margin. */}
-			<div className="editor:max-h-[calc(100vh-11rem)] overflow-auto bg-muted p-4">
-				<div className="shadow-sm">
+			<div className="editor:max-h-[calc(100vh-11rem)] overflow-auto bg-muted p-4 print:max-h-none print:overflow-visible print:bg-transparent print:p-0">
+				<div className="shadow-sm print:shadow-none">
 					<InvoiceDocument draft={draft} />
 				</div>
 			</div>

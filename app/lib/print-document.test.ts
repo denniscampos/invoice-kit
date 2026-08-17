@@ -40,12 +40,18 @@ describe("buildPrintDocument", () => {
 		expect(html.trimEnd().endsWith("</html>")).toBe(true);
 	});
 
-	it("sizes itself to a letter page with no margin of its own", () => {
+	/* The paper box is still this module's, so it is still asserted here. The page
+	   size is not: `@page { size: Letter }` moved to `app.css` under
+	   `@media print`, so that both this document and the browser's print dialog
+	   read one copy. It cannot be checked from here, because `PRINT_STYLES` is an
+	   empty string under Vitest by design, so the size is proven by a real render
+	   instead, reading 612x792 out of the PDF's MediaBox. */
+	it("wraps the invoice in a letter-sized paper box", () => {
 		const html = buildPrintDocument(draft(), STYLES);
 
-		expect(html).toContain("@page { size: Letter; margin: 0; }");
 		expect(html).toContain("width: 8.5in");
 		expect(html).toContain("min-height: 11in");
+		expect(html).toContain('<div class="page">');
 	});
 
 	it("carries the styles it was given inside the style tag", () => {

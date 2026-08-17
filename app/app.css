@@ -145,3 +145,49 @@
 		@apply font-sans;
 	}
 }
+
+/* What a printed invoice page is, in one place.
+
+   Both ways of putting an invoice on paper read these rules from here: the
+   browser's own print dialog, because this is the app's stylesheet, and the PDF,
+   because `PRINT_STYLES` inlines this whole file into the document Browser
+   Rendering opens and that renderer applies print media. Proven rather than
+   assumed: a temporary `@media print` marker rule showed up in the text of a
+   rendered PDF.
+
+   One copy on purpose. Two would let Print and Download disagree about what a
+   page is, and the promise the project makes is that what you see is what you
+   get from either. Paper size belongs with the locale work in feature 22, where
+   it should change both outputs at once rather than one of them.
+
+   margin: 0 on the page, because the templates carry their own padding and that
+   is the printed margin; a page margin as well would add a second one. */
+@media print {
+	@page {
+		size: Letter;
+		margin: 0;
+	}
+
+	html,
+	body {
+		margin: 0;
+		padding: 0;
+		background: #fff;
+	}
+
+	/* Keep a row and its rule together, and never strand a heading at the foot of
+	   a page, once an invoice runs past one sheet. */
+	tr,
+	address,
+	h1,
+	h2,
+	h3 {
+		break-inside: avoid;
+	}
+
+	h1,
+	h2,
+	h3 {
+		break-after: avoid;
+	}
+}

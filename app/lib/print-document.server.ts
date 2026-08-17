@@ -47,23 +47,20 @@ export function pdfFilename(invoiceNumber: string): string {
 	return stem ? `${stem}.pdf` : "invoice.pdf";
 }
 
-/* Page geometry lives here rather than in a template, the split feature 3 set:
-   the templates carry their own padding and the container decides the paper.
-   margin: 0 on the page and the template's padding as the printed margin, so
-   the PDF matches the preview instead of adding a second margin around it. */
+/* The paper box, which only this document has: the app page produces the same
+   box from print rules against markup laid out for the screen.
+
+   The rest of the page geometry (`@page`, the html and body reset, the
+   break-avoidance rules) used to live here too and now lives in `app.css` under
+   `@media print`, which this document inlines and the renderer applies. One copy
+   serves both the PDF and the browser's print dialog; see the comment there. */
 const PAGE_STYLES = `
-@page { size: Letter; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; }
 .page {
 	width: 8.5in;
 	min-height: 11in;
 	margin: 0 auto;
 	background: var(--color-paper);
 }
-/* Keep a row and its rule together, and never strand a heading at the foot of
-   a page, once an invoice runs past one sheet. */
-tr, address, h1, h2, h3 { break-inside: avoid; }
-h1, h2, h3 { break-after: avoid; }
 `;
 
 const HTML_ESCAPES: Record<string, string> = {

@@ -19,7 +19,8 @@ export function AppBar({ actions }: { actions?: ReactNode }) {
 	const user = useRouteLoaderData<typeof rootLoader>("root")?.user;
 
 	return (
-		<header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-card px-4 sm:gap-4 sm:px-6">
+		// `print:hidden` because paper wants the invoice, not the app around it.
+		<header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-card px-4 print:hidden sm:gap-4 sm:px-6">
 			{/* The mark is a link home, which costs no width and is the only way back
 			    to the editor on a phone, where the nav below is hidden. */}
 			<Link
