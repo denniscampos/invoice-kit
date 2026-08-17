@@ -1,3 +1,4 @@
+import type { SettableStatus } from "~/lib/invoice-status";
 import { lineItemTotal } from "~/lib/money";
 import type {
 	InvoiceDraft,
@@ -518,6 +519,37 @@ export async function updateInvoice(
 	]);
 
 	return toSavedInvoice(pair.invoice, pair.lineItems);
+}
+
+/* Sets the status, and nothing else.
+
+   Separate from `updateInvoice` on purpose: that one replaces the whole invoice
+   from a draft and deliberately preserves whatever status the row already had,
+   so saving an edit can never quietly un-send an invoice. This is the other
+   half, the one write that is allowed to move it.
+
+   `SettableStatus` rather than `InvoiceStatus` in the signature, so a caller
+   cannot pass `void` and have it typecheck; feature 12 owns that word.
+
+   False means no row matched, which is the same "not this user's, or gone"
+   answer `getInvoice` and `updateInvoice` give, and callers turn it into the
+   same 404. */
+export async function setInvoiceStatus(
+	db: D1Database,
+	userId: string,
+	id: string,
+	status: SettableStatus,
+	now: string = new Date().toISOString(),
+): Promise<boolean> {
+	const result = await db
+		.prepare(
+			`update invoice set status = ?1, updatedAt = ?2
+			 where id = ?3 and userId = ?4`,
+		)
+		.bind(status, now, id, userId)
+		.run();
+
+	return result.meta.changes > 0;
 }
 
 function partyColumns<P extends "billFrom" | "billTo">(

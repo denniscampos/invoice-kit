@@ -7,14 +7,18 @@ import { DownloadPdfButton } from "~/components/invoice/DownloadPdfButton";
 import { InvoiceEditorPanes } from "~/components/invoice/InvoiceEditorPanes";
 import { SaveButton, SaveError } from "~/components/invoice/SaveButton";
 import { StatusBadge } from "~/components/invoice/StatusBadge";
+import {
+	StatusControl,
+	type StatusResult,
+} from "~/components/invoice/StatusControl";
 import { SessionActions } from "~/components/SessionActions";
 import { Button } from "~/components/ui/button";
 import { Card } from "~/components/ui/card";
 import { cloudflareContext } from "~/context";
 import { requireUser } from "~/lib/auth.server";
-import { displayStatus } from "~/lib/invoice-status";
+import { displayStatus, parseSettableStatus } from "~/lib/invoice-status";
 import { saveDraftEdit } from "~/lib/invoice-save.server";
-import { getInvoice } from "~/lib/invoice-store.server";
+import { getInvoice, setInvoiceStatus } from "~/lib/invoice-store.server";
 import type { InvoiceDraft } from "~/types/invoice";
 
 /* The generated type makes `loaderData` optional here precisely because this
@@ -52,6 +56,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 		   Worker's clock is UTC and the browser's is local, so deriving it during
 		   render would let the two disagree about what day it is. */
 		display: displayStatus(invoice.status, invoice.draft.dueDate, new Date()),
+		/* The stored status, for the control, which is a different question from
+		   the one the badge answers. Null for an invoice this feature has no
+		   business moving, which today means only a void one: nothing can produce
+		   that yet, and when feature 12 can, un-voiding is its decision to design
+		   rather than a fourth entry in a select. */
+		settableStatus: parseSettableStatus(invoice.status),
 		draft: invoice.draft,
 	};
 }
@@ -61,6 +71,34 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 	const user = await requireUser(request, env);
 
 	const form = await request.formData();
+
+	/* Two things post here now, so each says which it is rather than being told
+	   apart by which fields it brought. An intent nobody recognises is refused,
+	   never allowed to fall through to the save path. */
+	const intent = form.get("intent");
+
+	if (intent === "status") {
+		const status = parseSettableStatus(form.get("status"));
+
+		/* The select cannot produce anything else, so this is about requests that
+		   did not come from it: `void` belongs to feature 12, and junk belongs
+		   nowhere. */
+		if (!status) {
+			return {
+				ok: false as const,
+				error: "That is not a status an invoice can be set to.",
+			} satisfies StatusResult;
+		}
+
+		const changed = await setInvoiceStatus(env.DB, user.id, params.id, status);
+		if (!changed) throw new Response("Not found", { status: 404 });
+
+		return { ok: true as const, status } satisfies StatusResult;
+	}
+
+	if (intent !== "save") {
+		return { ok: false as const, error: "That request was not understood." };
+	}
 
 	let payload: unknown;
 	try {
@@ -131,7 +169,15 @@ function SavedInvoiceEditor({ invoice }: { invoice: LoaderData }) {
 					<span className="font-semibold tracking-tight tabular-nums">
 						{invoice.invoiceNumber}
 					</span>
+					{/* Badge and control side by side, and they can disagree on purpose:
+					    a sent invoice past its due date reads Overdue here while the
+					    control reads Sent. The badge is what the invoice is today, the
+					    control is what was recorded. Offering Overdue as a choice would
+					    say the user could pick it. */}
 					<StatusBadge status={invoice.display} />
+					{invoice.settableStatus ? (
+						<StatusControl status={invoice.settableStatus} />
+					) : null}
 				</div>
 			</div>
 			<InvoiceEditorPanes

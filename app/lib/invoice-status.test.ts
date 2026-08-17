@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayStatus } from "./invoice-status";
+import { displayStatus, parseSettableStatus } from "./invoice-status";
 
 /* Local noon, so the assertions are about the date and not about which side of
    midnight a timezone offset lands on. `toIsoDate` reads local calendar fields,
@@ -54,5 +54,40 @@ describe("displayStatus", () => {
 		expect(displayStatus("sent", "2026-01-01", new Date(2026, 0, 1, 12))).toBe(
 			"sent",
 		);
+	});
+});
+
+describe("parseSettableStatus", () => {
+	it("accepts the three a user may choose", () => {
+		expect(parseSettableStatus("draft")).toBe("draft");
+		expect(parseSettableStatus("sent")).toBe("sent");
+		expect(parseSettableStatus("paid")).toBe("paid");
+	});
+
+	/* The case worth having. `void` is a real InvoiceStatus, so an implementation
+	   that checked membership in that type instead would take it, and the status
+	   control would quietly own a decision feature 12 has not made yet. */
+	it("refuses void, which is a real status but not one this hands out", () => {
+		expect(parseSettableStatus("void")).toBeNull();
+	});
+
+	it("refuses overdue, which is derived and has no column", () => {
+		expect(parseSettableStatus("overdue")).toBeNull();
+	});
+
+	it("refuses anything that is not one of the three", () => {
+		expect(parseSettableStatus("")).toBeNull();
+		expect(parseSettableStatus("DRAFT")).toBeNull();
+		expect(parseSettableStatus("sent ")).toBeNull();
+		expect(parseSettableStatus("deleted")).toBeNull();
+	});
+
+	// It reads a form field, so every one of these is a value it can be handed.
+	it("refuses values that are not strings at all", () => {
+		expect(parseSettableStatus(null)).toBeNull();
+		expect(parseSettableStatus(undefined)).toBeNull();
+		expect(parseSettableStatus(0)).toBeNull();
+		expect(parseSettableStatus(["sent"])).toBeNull();
+		expect(parseSettableStatus({ status: "sent" })).toBeNull();
 	});
 });

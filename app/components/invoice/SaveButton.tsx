@@ -65,10 +65,16 @@ export function SaveButton({
 	}, [draft]);
 
 	function save() {
-		/* Only the draft. Which invoice this is, if it is one already, is the
-		   route's business and it reads it from the URL; no id travels in a form
-		   body anywhere in this app. */
-		fetcher.submit({ draft: JSON.stringify(draft) }, { method: "post" });
+		/* Only the intent and the draft. Which invoice this is, if it is one
+		   already, is the route's business and it reads it from the URL; no id
+		   travels in a form body anywhere in this app.
+
+		   `intent` is what tells `/invoices/:id` this is a save rather than a
+		   status change. The editor at `/` has one action and ignores it. */
+		fetcher.submit(
+			{ intent: "save", draft: JSON.stringify(draft) },
+			{ method: "post" },
+		);
 	}
 
 	return (

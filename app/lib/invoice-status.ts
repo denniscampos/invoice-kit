@@ -18,6 +18,32 @@ export const STATUS_LABELS: Record<DisplayStatus, string> = {
 	overdue: "Overdue",
 };
 
+/* The three a user may put an invoice into, which is not the whole of
+   `InvoiceStatus`.
+
+   `void` is missing on purpose. It is a real stored status, but feature 12 owns
+   it along with delete, because the two are one decision: a draft is deleted and
+   a sent invoice is voided and kept. A control that could set it here would
+   pre-empt the rules that feature has yet to make about what may be voided.
+
+   Nothing else in the app decides anything on the strength of a status. It
+   changes what the badge says and, through `displayStatus`, whether a past-due
+   invoice reads as overdue; it does not gate editing, saving, or rendering. A
+   later feature that wants to make a real decision from a status has to argue
+   for that separately. */
+export const SETTABLE_STATUSES = ["draft", "sent", "paid"] as const;
+
+export type SettableStatus = (typeof SETTABLE_STATUSES)[number];
+
+/* Takes unknown, because this reads a form field. Membership in this list rather
+   than in `InvoiceStatus`, or "void" would be accepted: it is a perfectly valid
+   status, just not one this feature hands out. */
+export function parseSettableStatus(value: unknown): SettableStatus | null {
+	return SETTABLE_STATUSES.includes(value as SettableStatus)
+		? (value as SettableStatus)
+		: null;
+}
+
 /* Takes the day rather than reading the clock, so a caller decides what "now"
    means and the tests need no timer faking.
 
